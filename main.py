@@ -6,6 +6,7 @@ from dht.kademlia import DHTNode
 from network.server import start_server
 from network.client import BroadcastClient
 from utils.terminal import Terminal
+from dht.kademlia import DHTNode, node_id_from, NodeInfo
 
 logging.basicConfig(level=logging.ERROR)
 
@@ -17,7 +18,7 @@ async def main():
     parser.add_argument("--bootstrap", type=str, help="IP:Porta de um nó existente para entrada na rede")
     args = parser.parse_args()
 
-    player_id = f"{args.ip}:{args.port}"
+    player_id = node_id_from(args.ip, args.port)
     state = GameState(player_id, args.name, args.ip, args.port)
     dht = DHTNode(args.ip, args.port, args.name)
     client = BroadcastClient(dht)
@@ -72,13 +73,32 @@ async def main():
 
     if args.bootstrap:
         b_ip, b_port_str = args.bootstrap.split(":")
-        class MockNode:
-            node_id = f"{b_ip}:{b_port_str}"
-            ip = b_ip
-            port = int(b_port_str)
+        b_port = int(b_port_str)
+        b_id = node_id_from(b_ip, b_port)
         
-        await client.send_to(MockNode(), player_id, args.name, 4, f"{args.ip}:{args.port}")
+        # Criar cliente temporário para interrogar o Host
+        temp_client = client._get_client(NodeInfo(b_id, b_ip, b_port))
+        
+        # 1. Obter info real do Host (incluindo o nome configurado nele)
+        # Pedimos à DHT do Host os nós mais próximos do seu próprio ID
+        nodes = await temp_client.find_node(b_id, player_id)
+        host_info = next((n for n in nodes if n.node_id == b_id), None)
+        
+        host_name = host_info.name if host_info and host_info.name else "Jogador_Desconhecido"
+        
+        # 2. Registar o Host com a identidade correta
+        b_node = NodeInfo(b_id, b_ip, b_port, name=host_name)
+        dht.add_peer(b_node)
+        await state.add_peer(b_id, host_name, b_ip, b_port)
 
+        # 3. Descoberta de outros pares na rede
+        for n in nodes:
+            if n.node_id != player_id and n.node_id != b_id:
+                dht.add_peer(n)
+                await state.add_peer(n.node_id, n.name or "Explorador", n.ip, n.port)
+
+    # 3. Anunciar JOIN a TODOS os pares conhecidos (Mesh P2P)
+    # Isto garante que o Jogador 3 envia um JOIN direto ao Jogador 2
     await client.announce_join(player_id, args.name, args.ip, args.port)
 
     await terminal.run_loop()

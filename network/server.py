@@ -103,7 +103,13 @@ class GameServicer:
     # ── GameService.FindNode ──────────────────────────────────────────────
 
     async def FindNode(self, request, context):
-        closest = self.dht.on_find_node(request.target_id, request.requester_id)
+        # Obter os K nós mais próximos, incluindo o próprio Host se for solicitado
+        closest = self.dht.find_closest(request.target_id)
+        
+        # Inserir o próprio nó na resposta para que o recém-chegado saiba quem é o Host
+        if self.dht.node_id not in [n.node_id for n in closest]:
+            closest.append(self.dht.info)
+
         nodes = [
             game_pb2.NodeInfo(
                 node_id=n.node_id,

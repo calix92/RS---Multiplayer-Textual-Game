@@ -125,13 +125,19 @@ class GameState:
 
     async def add_peer(self, player_id: str, name: str, ip: str, port: int):
         async with self._lock:
-            if player_id not in self.peers and player_id != self.self_player.player_id:
+            if player_id == self.self_player.player_id:
+                return False
+            
+            if player_id not in self.peers:
                 self.peers[player_id] = Player(player_id, name, ip, port)
-                self._log("system", "JOIN", name, f"{name} joined the game")
+                self._log("system", "JOIN", name, f"{name} entrou no reino")
                 return True
-            elif player_id in self.peers:
+            else:
+                # Se o nó já existe mas o nome era temporário, atualiza
+                if self.peers[player_id].name in ["Nó_Inicial", "Desconhecido"]:
+                    self.peers[player_id].name = name
                 self.peers[player_id].touch()
-            return False
+                return False
 
     async def remove_peer(self, player_id: str):
         async with self._lock:
