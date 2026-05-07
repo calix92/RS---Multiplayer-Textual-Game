@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+package game;
+
+// ─────────────────────────────────────────────
+//  Player actions sent between peers
+// ─────────────────────────────────────────────
+service GameService {
+  // Combat / interaction actions
+  rpc SendAction (ActionRequest) returns (ActionResponse);
+
+  // DHT-based peer discovery
+  rpc FindNode   (FindNodeRequest)  returns (FindNodeResponse);
+  rpc StoreNode  (StoreNodeRequest) returns (StoreNodeResponse);
+  rpc Ping       (PingRequest)      returns (PingResponse);
+}
+
+// ─── Action Types ────────────────────────────
+enum ActionType {
+  ATTACK  = 0;
+  MOVE    = 1;
+  SPEAK   = 2;
+  HEAL    = 3;
+  JOIN    = 4;
+  LEAVE   = 5;
+}
+
+message ActionRequest {
+  string  sender_id   = 1;
+  string  sender_name = 2;
+  ActionType action   = 3;
+  string  payload     = 4;   // e.g. "Sword", "North", "Hello!", "25"
+  int64   timestamp   = 5;
+}
+
+message ActionResponse {
+  bool    success     = 1;
+  string  message     = 2;
+  int32   hp_delta    = 3;   // positive = heal, negative = damage
+}
+
+// ─── DHT Node Discovery ───────────────────────
+message NodeInfo {
+  string node_id  = 1;
+  string ip       = 2;
+  int32  port     = 3;
+  string name     = 4;
+}
+
+message FindNodeRequest {
+  string target_id    = 1;
+  string requester_id = 2;
+}
+
+message FindNodeResponse {
+  repeated NodeInfo closest_nodes = 1;
+}
+
+message StoreNodeRequest {
+  NodeInfo node = 1;
+}
+
+message StoreNodeResponse {
+  bool success = 1;
+}
+
+message PingRequest {
+  string sender_id = 1;
+}
+
+message PingResponse {
+  string node_id = 1;
+  bool   alive   = 2;
+}
