@@ -1,0 +1,6 @@
+docker build -t p2p-rpg .
+(docker build --no-cache -t p2p-rpg .)
+
+docker run -it --name player1 --network host p2p-rpg --name Arqueiro --port 50051
+
+docker run -it --name player2 --network host p2p-rpg --name Guerreiro --port 50052 --bootstrap 127.0.0.1:50051
