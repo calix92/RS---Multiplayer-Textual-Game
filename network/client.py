@@ -176,3 +176,22 @@ class BroadcastClient:
         for c in self._clients.values():
             await c.close()
         self._clients.clear()
+
+    async def sync_with_host(self, host_node_info):
+        """
+        Liga-se ao nó de bootstrap e saca o estado atual do jogo.
+        """
+        try:
+            # host_node_info deve ter o IP e Porta do gajo ao qual nos estamos a ligar
+            channel = grpc.aio.insecure_channel(f"{host_node_info.ip}:{host_node_info.port}")
+            stub = game_pb2_grpc.GameServiceStub(channel)
+            
+            # Pede o mundo
+            request = game_pb2.SyncRequest(requester_id=self.dht.node_id)
+            response = await stub.SyncWorld(request)
+            
+            await channel.close()
+            return response.players_json # Retorna o JSON
+        except Exception as e:
+            print(f"Erro na sincronização: {e}")
+            return None

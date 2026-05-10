@@ -10,6 +10,15 @@ from dht.kademlia import DHTNode, node_id_from, NodeInfo
 
 logging.basicConfig(level=logging.ERROR)
 
+async def peer_monitor_loop(state):
+    """Tarefa que corre em background para limpar jogadores inativos."""
+    while True:
+        try:
+            await asyncio.sleep(5) # Verifica a cada 5 segundos
+            await state.clean_inactive_peers(timeout=15)
+        except Exception as e:
+            logging.error(f"Erro no monitor de peers: {e}")
+
 async def main():
     parser = argparse.ArgumentParser(description="P2P Text RPG")
     parser.add_argument("--name", required=True, help="Nome do jogador")
@@ -72,34 +81,37 @@ async def main():
     terminal.handler = action_handler
 
     if args.bootstrap:
-        b_ip, b_port_str = args.bootstrap.split(":")
-        b_port = int(b_port_str)
-        b_id = node_id_from(b_ip, b_port)
-        
-        # Criar cliente temporário para interrogar o Host
-        temp_client = client._get_client(NodeInfo(b_id, b_ip, b_port))
-        
-        # 1. Obter info real do Host (incluindo o nome configurado nele)
-        # Pedimos à DHT do Host os nós mais próximos do seu próprio ID
-        nodes = await temp_client.find_node(b_id, player_id)
-        host_info = next((n for n in nodes if n.node_id == b_id), None)
-        
-        host_name = host_info.name if host_info and host_info.name else "Jogador_Desconhecido"
-        
-        # 2. Registar o Host com a identidade correta
-        b_node = NodeInfo(b_id, b_ip, b_port, name=host_name)
-        dht.add_peer(b_node)
-        await state.add_peer(b_id, host_name, b_ip, b_port)
+        try:
+            b_ip, b_port_str = args.bootstrap.split(":")
+            b_port = int(b_port_str)
+            b_id = node_id_from(b_ip, b_port)
+            b_node = NodeInfo(b_id, b_ip, b_port)
 
-        # 3. Descoberta de outros pares na rede
-        for n in nodes:
-            if n.node_id != player_id and n.node_id != b_id:
-                dht.add_peer(n)
-                await state.add_peer(n.node_id, n.name or "Explorador", n.ip, n.port)
+            # 1. Sincronização Total (HP, Posições, Nomes)
+            world_data = await client.sync_with_host(b_node)
+            if world_data:
+                await state.apply_world_state(world_data)
+                terminal.push_event("🌍 Mundo sincronizado via Bootstrap.")
+            
+            # 2. Inserir o nó de bootstrap na nossa DHT para futuras pesquisas
+            # Nota: O nome virá no SyncWorld, mas registamos o nó aqui
+            dht.add_peer(b_node) 
+
+            # 3. Descobrir outros vizinhos que o Host conhece
+            temp_client = client._get_client(b_node)
+            nodes = await temp_client.find_node(b_id, player_id)
+            for n in nodes:
+                if n.node_id != player_id:
+                    dht.add_peer(n)
+                    # Opcional: podes fazer state.add_peer aqui se o SyncWorld falhou
+        except Exception as e:
+            terminal.push_event(f"⚠️ Falha ao ligar ao bootstrap: {e}")
 
     # 3. Anunciar JOIN a TODOS os pares conhecidos (Mesh P2P)
     # Isto garante que o Jogador 3 envia um JOIN direto ao Jogador 2
     await client.announce_join(player_id, args.name, args.ip, args.port)
+
+    asyncio.create_task(peer_monitor_loop(state))
 
     await terminal.run_loop()
 

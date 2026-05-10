@@ -13,6 +13,8 @@ service GameService {
   rpc FindNode   (FindNodeRequest)  returns (FindNodeResponse);
   rpc StoreNode  (StoreNodeRequest) returns (StoreNodeResponse);
   rpc Ping       (PingRequest)      returns (PingResponse);
+
+  rpc SyncWorld (SyncRequest) returns (WorldState);
 }
 
 // ─── Action Types ────────────────────────────
@@ -23,6 +25,15 @@ enum ActionType {
   HEAL    = 3;
   JOIN    = 4;
   LEAVE   = 5;
+}
+
+message SyncRequest {
+  string reader_id = 1;
+}
+
+message WorldState {
+
+  string world_data_json = 1; 
 }
 
 message ActionRequest {

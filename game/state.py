@@ -8,6 +8,7 @@ Thread-safe via asyncio.Lock — state is only mutated from the event loop.
 import asyncio
 import time
 import logging
+import json
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
@@ -218,6 +219,72 @@ class GameState:
     async def self_respawn(self) -> str:
         async with self._lock:
             return self.self_player.respawn()
+        
+
+
+    async def get_world_state_json(self) -> str:
+        """Transforma todos os jogadores conhecidos (incluindo eu) em JSON."""
+        async with self._lock:
+            all_players = []
+            # Adiciono-me a mim mesmo
+            all_players.append(self._player_to_dict(self.self_player))
+            # Adiciono os outros que eu conheço
+            for p in self.peers.values():
+                all_players.append(self._player_to_dict(p))
+            
+            return json.dumps(all_players)
+
+    def _player_to_dict(self, p: Player):
+        return {
+            "player_id": p.player_id,
+            "name": p.name,
+            "ip": p.ip,
+            "port": p.port,
+            "hp": p.hp,
+            "status": p.status.value,
+            "position": p.position
+        }
+
+    async def apply_world_state(self, json_data: str):
+        """Lê o JSON recebido e preenche o meu dicionário de peers."""
+        data = json.loads(json_data)
+        async with self._lock:
+            for p_dict in data:
+                pid = p_dict["player_id"]
+                if pid == self.self_player.player_id:
+                    continue # Não me vou sobrepor a mim mesmo
+                
+                new_player = Player(
+                    player_id = pid,
+                    name      = p_dict["name"],
+                    ip        = p_dict["ip"],
+                    port      = p_dict["port"],
+                    hp        = p_dict["hp"],
+                    status    = PlayerStatus(p_dict["status"]),
+                    position  = p_dict["position"]
+                )
+                self.peers[pid] = new_player
+            self._log("system", "SYNC", "world", "Mundo sincronizado com sucesso")
+
+    
+    async def clean_inactive_peers(self, timeout: int = 15):
+        """
+        Remove peers que não enviam atualizações há mais de 'timeout' segundos.
+        """
+        async with self._lock:
+            now = time.time()
+            to_remove = []
+            
+            for pid, player in self.peers.items():
+                if now - player.last_seen > timeout:
+                    to_remove.append(pid)
+            
+            for pid in to_remove:
+                p_name = self.peers[pid].name
+                del self.peers[pid]
+                self._log("system", "TIMEOUT", p_name, f"{p_name} desapareceu nas brumas (Timeout)")
+            
+            return len(to_remove) > 0 # Retorna True se limpou alguém
 
     # ── Display helpers ───────────────────────────────────────────────────
 
