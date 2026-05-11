@@ -54,14 +54,20 @@ async def main():
             
         elif cmd == "attack":
             parts = args_str.split(":")
-            target = parts[0]
+            target_name = parts[0]
             weapon = parts[1] if len(parts) > 1 else "sword"
             
-            target_node = next((p for p in dht.all_peers() if p.name == target), None)
+            target_node = next((p for p in dht.all_peers() if p.name == target_name), None)
+            
             if target_node:
-                await client.send_to(target_node, player_id, args.name, 0, weapon)
+                can_attack, error_msg = await state.self_attack(target_node.node_id, weapon)
+                
+                if can_attack:
+                    await client.send_to(target_node, player_id, args.name, 0, weapon)
+                else:
+                    terminal.push_event(f"Falha: {error_msg}")
             else:
-                terminal.push_event(f"Alvo '{target}' desconhecido na DHT.")
+                terminal.push_event(f"Jogador {target_name} não encontrado.")
                 
         elif cmd == "heal":
             target_node = next((p for p in dht.all_peers() if p.name == args_str), None)
