@@ -1,0 +1,22 @@
+services:
+  player1:
+    build:
+      context: .
+    container_name: player1
+    command: ["--name", "Arqueiro", "--port", "50051"]
+    ports:
+      - "50051:50051"
+    stdin_open: true
+    tty: true
+
+  player2:
+    build:
+      context: .
+    container_name: player2
+    command: ["--name", "Guerreiro", "--port", "50052", "--bootstrap", "player1:50051"]
+    ports:
+      - "50052:50052"
+    stdin_open: true
+    tty: true
+    depends_on:
+      - player1

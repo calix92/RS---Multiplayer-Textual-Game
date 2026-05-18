@@ -148,17 +148,24 @@ class GameState:
 
     # ── Action processors (called when WE receive an action via gRPC) ─────
 
-    async def process_attack(self, sender_id: str, sender_name: str,
-                              weapon: str) -> tuple[int, str]:
-        """
-        Someone attacked US.  Returns (hp_delta, message).
-        """
+    
+
+    async def process_attack(self, sender_id: str, sender_name: str, weapon: str) -> tuple[int, str]:
+        """Verificação no lado de quem recebe o ataque (Servidor)"""
         async with self._lock:
-            damage = WEAPON_DAMAGE.get(weapon.lower(), ATTACK_DAMAGE)
+            # Tentar encontrar o atacante na nossa lista de conhecidos
+            attacker = self.peers.get(sender_id)
+            
+            # Validação de segurança: Se soubermos onde o atacante está, validamos a posição
+            if attacker and attacker.position != self.self_player.position:
+                self._log(sender_name, "ATTACK_BLOCKED", self.self_player.name, "Tentativa de ataque à distância")
+                return 0, f"Ataque de {sender_name} ignorado: Fora de alcance."
+
+            # Se estiverem no mesmo local, processa o dano normalmente
+            damage = 10 # ou baseado na arma
             result = self.self_player.take_damage(damage, sender_name)
-            self._log(sender_name, "ATTACK", self.self_player.name,
-                      f"{weapon} → {damage} dmg")
-            return (-damage, result)
+            self._log(sender_name, "ATTACK", self.self_player.name, f"{weapon} (-{damage}HP)")
+            return -damage, result
 
     async def process_heal(self, sender_id: str, sender_name: str,
                            amount: int) -> tuple[int, str]:
@@ -196,16 +203,6 @@ class GameState:
         await self.remove_peer(sender_id)
         return f"{sender_name} left the game"
 
-    # ── Own player actions (we SEND these to peers) ───────────────────────
-
-    async def self_attack(self, target_id: str, weapon: str) -> Optional[str]:
-        async with self._lock:
-            if not self.self_player.is_alive():
-                return "You are dead. You cannot attack."
-            if target_id not in self.peers:
-                return f"Target not found in known peers."
-            return None  # OK to proceed
-
     async def self_heal(self, target_id: str) -> Optional[str]:
         async with self._lock:
             if not self.self_player.is_alive():
@@ -219,6 +216,19 @@ class GameState:
     async def self_respawn(self) -> str:
         async with self._lock:
             return self.self_player.respawn()
+        
+    async def self_attack(self, target_id: str, weapon: str):
+        """Verificação no lado de quem ataca (Cliente)"""
+        async with self._lock:
+            if target_id not in self.peers:
+                return False, "Alvo não encontrado."
+            
+            target = self.peers[target_id]
+            # ERRO CORRIGIDO: Verifica se estão na mesma posição
+            if self.self_player.position != target.position:
+                return False, f"O alvo está em {target.position}, mas tu estás em {self.self_player.position}."
+            
+            return True, ""
         
 
 
