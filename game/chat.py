@@ -1,6 +1,7 @@
 import aioconsole
 
-async def chat_loop(client, name):
+
+async def chat_loop(chat_service):
     while True:
         msg = await aioconsole.ainput("> ")
-        client.broadcast(name, msg)
+        chat_service.send(msg)
