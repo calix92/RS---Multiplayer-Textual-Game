@@ -187,8 +187,10 @@ async def start_server(host: str,
 
     game_pb2_grpc.add_GameServiceServicer_to_server(servicer, server)
 
-    address = f"{host}:{port}"
-    server.add_insecure_port(address)
+    # Fazemos bind em 0.0.0.0 para garantir que o Docker consegue ouvir em todas as interfaces
+    # mas o 'host' passado continua a ser o IP real para efeitos de log e lógica.
+    bind_address = f"0.0.0.0:{port}"
+    server.add_insecure_port(bind_address)
     await server.start()
-    log.info("Servidor gRPC ativo em %s", address)
+    log.info("Servidor gRPC ativo em %s (anunciado como %s:%d)", bind_address, host, port)
     return server
