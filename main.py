@@ -1,28 +1,29 @@
 import argparse
 import asyncio
-import threading
 
 from core.app import App
-
+from domain.peer import Peer
 
 def main():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--name", required=True)
-    parser.add_argument("--port", required=True)
-    parser.add_argument("--kad-port", required=True)
-    parser.add_argument("--bootstrap", default=None)
+    parser.add_argument("--username", required=True)
+    parser.add_argument("--host")
+    parser.add_argument("--grpc-port", type=int)
+    parser.add_argument("--kad-port", type=int)
+    parser.add_argument("--bootstrap")
 
     args = parser.parse_args()
 
-    app = App(
-        name=args.name,
-        grpc_port=int(args.port),
-        kad_port=int(args.kad_port),
+    peer = Peer(
+        username=args.username,
+        host=args.host,
+        grpc_port=args.grpc_port,
+        kad_port=args.kad_port,
         bootstrap=args.bootstrap
     )
 
-    asyncio.run(app.start())
+    asyncio.run(App(peer).start())
 
 
 if __name__ == "__main__":

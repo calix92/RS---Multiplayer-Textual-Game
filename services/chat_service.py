@@ -1,38 +1,24 @@
 class ChatService:
 
-    def __init__(
-        self,
-        uuid,
-        username,
-        grpc_port,
-        discovery
-    ):
-        self.uuid = uuid
-        self.username = username
-        self.grpc_port = grpc_port
-        self.discovery = discovery
+    def __init__(self, node, discovery, client):
 
-        self.client = ChatClient([])
+        self.node = node
+        self.discovery = discovery
+        self.client = client
 
     async def initialize(self):
 
-        address = f"localhost:{self.grpc_port}"
+        address = self.node.grpc_address()
 
         await self.discovery.register_user(
-            self.uuid,
+            self.node.uuid,
             address
         )
 
         peers = await self.discovery.get_peer_addresses(
-            exclude_uuid=self.uuid
+            exclude_uuid=self.node.uuid
         )
 
         self.client.add_peers(peers)
 
         print(f"[CHAT] peers = {peers}")
-
-    def send(self, message):
-        self.client.broadcast(
-            self.username,
-            message
-        )
