@@ -2,22 +2,38 @@ import asyncio
 import argparse
 import logging
 from game.state import GameState
-from dht.kademlia import DHTNode
+from dht.kademlia import DHTNode, NodeInfo, node_id_from
 from network.server import start_server
-from network.client import BroadcastClient
+from network.client import BroadcastClient, PeerClient
 from utils.terminal import Terminal
-from dht.kademlia import DHTNode, node_id_from, NodeInfo
 
 logging.basicConfig(level=logging.ERROR)
+log = logging.getLogger("main")
 
 async def peer_monitor_loop(state):
     """Tarefa que corre em background para limpar jogadores inativos."""
     while True:
         try:
-            await asyncio.sleep(5) # Verifica a cada 5 segundos
-            await state.clean_inactive_peers(timeout=15)
+            await asyncio.sleep(10) # Verifica a cada 10 segundos
+            # Aumentamos o timeout para 60 segundos para ser menos agressivo
+            await state.clean_inactive_peers(timeout=60)
         except Exception as e:
             logging.error(f"Erro no monitor de peers: {e}")
+
+async def heartbeat_loop(player_id, dht, client):
+    """Envia um ping a todos os peers conhecidos para manter a ligação viva."""
+    while True:
+        try:
+            await asyncio.sleep(20) # Ping a cada 20 segundos
+            peers = dht.all_peers()
+            for peer in peers:
+                if peer.node_id != player_id:
+                    # Usamos o PeerClient diretamente para um ping simples
+                    p_client = PeerClient(peer.ip, peer.port)
+                    await p_client.ping(player_id)
+                    await p_client.close()
+        except Exception as e:
+            log.debug(f"Erro no heartbeat: {e}")
 
 async def main():
     parser = argparse.ArgumentParser(description="P2P Text RPG")
@@ -39,8 +55,10 @@ async def main():
 
     server = await start_server(args.ip, args.port, state, dht, on_event)
 
-    async def action_handler(cmd: str, args_str: str):
-        if cmd == "quit":
+    async def action_handler(cmd_raw: str, args_str: str):
+        cmd = cmd_raw.lower().strip()
+        
+        if cmd == "quit" or cmd == "exit":
             await client.announce_leave(player_id, args.name)
             await client.close_all()
             await server.stop(0)
@@ -53,28 +71,34 @@ async def main():
             await client.broadcast(player_id, args.name, 1, args_str)
             
         elif cmd == "attack":
-            parts = args_str.split(":")
+            parts = args_str.split(" ")
             target_name = parts[0]
             weapon = parts[1] if len(parts) > 1 else "sword"
             
-            target_node = next((p for p in dht.all_peers() if p.name == target_name), None)
+            # Procurar o alvo nos PEERS do jogo (mais fiável que a DHT direta)
+            target_player = next((p for p in state.peers.values() if p.name.lower() == target_name.lower()), None)
             
-            if target_node:
-                can_attack, error_msg = await state.self_attack(target_node.node_id, weapon)
+            if target_player:
+                can_attack, error_msg = await state.self_attack(target_player.player_id, weapon)
                 
                 if can_attack:
+                    # Encontrar a info do nó para enviar o gRPC
+                    target_node = NodeInfo(target_player.player_id, target_player.ip, target_player.port, target_player.name)
                     await client.send_to(target_node, player_id, args.name, 0, weapon)
                 else:
                     terminal.push_event(f"Falha: {error_msg}")
             else:
-                terminal.push_event(f"Jogador {target_name} não encontrado.")
+                terminal.push_event(f"Jogador '{target_name}' não encontrado ou está noutra zona.")
                 
         elif cmd == "heal":
-            target_node = next((p for p in dht.all_peers() if p.name == args_str), None)
-            if target_node:
+            target_name = args_str.strip()
+            target_player = next((p for p in state.peers.values() if p.name.lower() == target_name.lower()), None)
+            
+            if target_player:
+                target_node = NodeInfo(target_player.player_id, target_player.ip, target_player.port, target_player.name)
                 await client.send_to(target_node, player_id, args.name, 3, "15")
             else:
-                terminal.push_event(f"Alvo '{args_str}' desconhecido na DHT.")
+                terminal.push_event(f"Alvo '{target_name}' não encontrado.")
                 
         elif cmd == "respawn":
             await state.self_respawn()
@@ -83,6 +107,10 @@ async def main():
         elif cmd == "peers":
             peers = dht.all_peers()
             terminal.push_event(f"DHT Peers ({len(peers)}): " + ", ".join([p.name for p in peers]))
+            
+        elif cmd == "status":
+            # O terminal já mostra o status no loop, mas podemos forçar refresh se quisermos
+            pass
 
     terminal.handler = action_handler
 
@@ -99,25 +127,24 @@ async def main():
                 await state.apply_world_state(world_data)
                 terminal.push_event("🌍 Mundo sincronizado via Bootstrap.")
             
-            # 2. Inserir o nó de bootstrap na nossa DHT para futuras pesquisas
-            # Nota: O nome virá no SyncWorld, mas registamos o nó aqui
+            # 2. Inserir o nó de bootstrap na nossa DHT
             dht.add_peer(b_node) 
 
-            # 3. Descobrir outros vizinhos que o Host conhece
+            # 3. Descobrir outros vizinhos
             temp_client = client._get_client(b_node)
             nodes = await temp_client.find_node(b_id, player_id)
             for n in nodes:
                 if n.node_id != player_id:
                     dht.add_peer(n)
-                    # Opcional: podes fazer state.add_peer aqui se o SyncWorld falhou
         except Exception as e:
             terminal.push_event(f"⚠️ Falha ao ligar ao bootstrap: {e}")
 
-    # 3. Anunciar JOIN a TODOS os pares conhecidos (Mesh P2P)
-    # Isto garante que o Jogador 3 envia um JOIN direto ao Jogador 2
+    # 3. Anunciar JOIN a TODOS os pares conhecidos
     await client.announce_join(player_id, args.name, args.ip, args.port)
 
+    # Iniciar loops de background
     asyncio.create_task(peer_monitor_loop(state))
+    asyncio.create_task(heartbeat_loop(player_id, dht, client))
 
     await terminal.run_loop()
 
