@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+service DiscoveryService {
+    rpc Register (RegisterRequest) returns (RegisterResponse);
+    rpc GetAllPeers (Empty) returns (GetAllPeersResponse);
+    rpc NotifyNewPeer (NotifyNewPeerRequest) returns (Empty);
+}
+
+message RegisterRequest {
+    string uuid = 1;
+    string address = 2;
+    string username = 3;
+}
+
+message RegisterResponse {
+    map<string, string> all_peers = 1;
+}
+
+message GetAllPeersResponse {
+    map<string, string> peers = 1;
+}
+
+message NotifyNewPeerRequest {
+    string uuid = 1;
+    string address = 2;
+}
+
+message Empty {}
