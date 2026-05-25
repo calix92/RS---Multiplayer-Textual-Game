@@ -1,4 +1,3 @@
-
 import asyncio
 import logging
 import os
@@ -24,11 +23,11 @@ MENU DE COMANDOS:
 - quit                 : Sair
 """
 
-def red(s):    return f'[91m{s}[0m'
-def green(s):  return f'[92m{s}[0m'
-def yellow(s): return f'[93m{s}[0m'
-def cyan(s):   return f'[96m{s}[0m'
-def bold(s):   return f'[1m{s}[0m'
+def red(s):    return f'\033[91m{s}\033[0m'
+def green(s):  return f'\033[92m{s}\033[0m'
+def yellow(s): return f'\033[93m{s}\033[0m'
+def cyan(s):   return f'\033[96m{s}\033[0m'
+def bold(s):   return f'\033[1m{s}\033[0m'
 
 class Terminal:
     def __init__(self, game_state, action_handler):
@@ -43,8 +42,7 @@ class Terminal:
     async def run_loop(self):
         print(BANNER)
         print(green(f'  Bem-vindo, {bold(self.state.self_player.name)}!'))
-        print(cyan('  Escreve "help" para ver os comandos.
-'))
+        print(cyan('  Escreve "help" para ver os comandos.'))
         await asyncio.gather(self._input_loop(), self._event_printer())
 
     async def _input_loop(self):
@@ -75,8 +73,7 @@ class Terminal:
                 print(self.state.status_board())
             elif cmd == 'log':
                 events = self.state.recent_events(12)
-                print('
-'.join(events) if events else 'Sem eventos.')
+                print('\n'.join(events) if events else 'Sem eventos.')
             elif cmd == 'peers':
                 await self.handler('peers', args)
             elif cmd == 'attack':
@@ -102,8 +99,7 @@ class Terminal:
         while self._running:
             try:
                 msg = await asyncio.wait_for(self._event_queue.get(), timeout=0.5)
-                print(f'
-  {yellow("►")} {msg}')
+                print(f'\n  {yellow("►")} {msg}')
                 if self._running: print(cyan('⚔  > '), end='', flush=True)
             except asyncio.TimeoutError: continue
             except Exception: break
