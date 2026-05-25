@@ -54,15 +54,15 @@ class GameServicer(game_pb2_grpc.GameServiceServicer):
         """
         Envia o estado completo do mundo (jogadores, HP, posições) para um novo peer.
         """
-        log.info("Recebido pedido de SyncWorld de %s", request.requester_id)
+        log.info("Recebido pedido de SyncWorld de %s", request.reader_id)
         
         # Se o peer já existe, atualizamos o sinal de vida dele
-        self._touch_peer(request.requester_id)
+        self._touch_peer(request.reader_id)
         
         # Gera o JSON com todos os dados atuais
         world_json = await self.state.get_world_state_json()
         
-        return game_pb2.WorldState(players_json=world_json)
+        return game_pb2.WorldState(world_data_json=world_json)
 
     # ── GameService.SendAction ────────────────────────────────────────────
 

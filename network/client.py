@@ -191,7 +191,7 @@ class BroadcastClient:
             response = await stub.SyncWorld(request)
             
             await channel.close()
-            return response.players_json # Retorna o JSON
+            return response.world_data_json # Retorna o JSON
         except Exception as e:
             print(f"Erro na sincronização: {e}")
             return None
