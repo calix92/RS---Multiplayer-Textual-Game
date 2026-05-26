@@ -1,8 +1,8 @@
 syntax = "proto3";
 
 service PeerDiscovery {
-    rpc RegisterPeer (Peer) returns (GetPeers);
-    rpc NotifyPeer (Peer) returns (Empty);
+    rpc RegisterPeer (Peer) returns (Empty);
+    rpc GetPeers (Empty) returns (AllPeers);
 }
 
 message Peer {
@@ -10,7 +10,7 @@ message Peer {
   string address = 2;
 }
 
-message GetPeers {
+message AllPeers {
     map<string, string> peers = 1;
 }
 
