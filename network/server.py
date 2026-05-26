@@ -62,11 +62,14 @@ async def start_server(host, port, game_state, dht_node, on_event):
     server = grpc_aio.server()
     game_pb2_grpc.add_GameServiceServicer_to_server(GameServicer(game_state, dht_node, on_event), server)
     
-    # Ouvir em todas as interfaces IPv4 e IPv6
-    server.add_insecure_port(f"0.0.0.0:{port}")
+    # Ouvir em TODAS as interfaces (IPv4 e IPv6)
+    # Ignoramos o 'host' passado para garantir que apanhamos o Tailscale
+    listen_addr = f"0.0.0.0:{port}"
+    server.add_insecure_port(listen_addr)
     try:
         server.add_insecure_port(f"[::]:{port}")
     except: pass
     
     await server.start()
+    logging.info(f"Server started on {listen_addr}")
     return server
