@@ -1,4 +1,6 @@
 from aioconsole import ainput
+from prompt_toolkit.patch_stdout import patch_stdout
+from prompt_toolkit import PromptSession
 import argparse
 import asyncio
 import socket
@@ -36,6 +38,10 @@ class PeerDiscovery(multiplayer_pb2_grpc.PeerDiscoveryServicer):
         async def RegisterPeer(self, request, context):
             self.peer.peers[request.uuid] = request.address
             print(self.peer.peers)
+
+            channel = grpc.aio.insecure_channel(peer_address)
+            self.channels[peer_uuid] = channel
+
             return multiplayer_pb2.Empty()
 
         async def GetPeers(self, request, context):
@@ -57,9 +63,29 @@ class Network:
         def __init__(self, peer):
                 self.peer = peer
                 self.server = None
+                self.session = PromptSession()
+
+                self.channels = {}
+                self.stubs_chat = {}
+
+
+        async def run(self):
+            await self.start()
+
+            chat_task = asyncio.create_task(self.chat_loop())
+            
+            with patch_stdout():
+                try:
+                    await self.server.wait_for_termination()
+                except KeyboardInterrupt:
+                    pass
+                finally:
+                    chat_task.cancel()
+                    await self.stop()
+                    await self.server.stop(grace=1)
+
 
         async def start(self):
-                self.server = grpc.aio.server()
                 self.server = grpc.aio.server(
                     options=[
                         ("grpc.so_reuseport", 0)
@@ -101,12 +127,14 @@ class Network:
 
                 await channel.close()
 
-                for peer_address in list(self.peer.peers.values()):
+                for peer_uuid, peer_address in dict(self.peer.peers.items()):
                         if peer_address == self.peer.address():
                                 continue
 
                         channel = grpc.aio.insecure_channel(peer_address)
                         stub = multiplayer_pb2_grpc.PeerDiscoveryStub(channel)
+
+                        self.channels[peer_uuid] = channel
 
                         await stub.RegisterPeer(
                                 multiplayer_pb2.Peer(
@@ -115,16 +143,14 @@ class Network:
                                 )
                         )
 
-                        await channel.close()
-
 
         async def chat_loop(self):
             while True:
-                message = await ainput()
+                message = await self.session.prompt_async("> ")
 
                 await self.broadcast(message)
 
-
+        
         async def broadcast(self, message):
             for peer_address in self.peer.peers.values():
                 if peer_address == self.peer.address():
@@ -141,19 +167,6 @@ class Network:
                         )
                 await channel.close()
 
-        async def run(self):
-            await self.start()
-
-            chat_task = asyncio.create_task(self.chat_loop())
-
-            try:
-                await self.server.wait_for_termination()
-            except KeyboardInterrupt:
-                pass
-            finally:
-                chat_task.cancel()
-                await self.stop()
-                await self.server.stop(grace=1)
 
 
 
