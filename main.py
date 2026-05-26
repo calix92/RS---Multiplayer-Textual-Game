@@ -40,6 +40,11 @@ class PeerDiscovery(multiplayer_pb2_grpc.PeerDiscoveryServicer):
         async def GetPeers(self, request, context):
                 return multiplayer_pb2.AllPeers(peers=self.peer.peers)
 
+        async def RemovePeer(self, request, context):
+            self.peer.peers.pop(request.uuid, None)
+            print(self.peer.peers)
+            return multiplayer_pb2.Empty()
+
 
 class Chat(multiplayer_pb2_grpc.ChatServicer):
     async def Broadcast(self, request, context):
@@ -86,7 +91,7 @@ class Network:
 
                 await channel.close()
 
-                for peer_address in self.peer.peers.values():
+                for peer_address in list(self.peer.peers.values()):
                         if peer_address == self.peer.address():
                                 continue
 
@@ -112,7 +117,7 @@ class Network:
 
         async def broadcast(self, message):
             print(f"📤 Broadcasting to {len(self.peer.peers)} peers...")
-            for peer_address in self.peer.peers.values():
+            for peer_address in list(self.peer.peers.values()):
                 if peer_address == self.peer.address():
                     print(f"   ⏭️ Skipping self: {peer_address}")
                     continue
@@ -161,6 +166,7 @@ class Network:
                 pass
             finally:
                 chat_task.cancel()
+                await self.stop()
                 await self.server.stop(grace=1)
 
 
@@ -175,6 +181,61 @@ class Network:
                 chat_task.cancel()
                 await self.server.stop(grace=1)
             """
+
+
+        """
+        async def stop(self):
+                for peer_address in list(self.peer.peers.values()):
+                        if peer_address == self.peer.address():
+                                continue
+
+                        channel = grpc.aio.insecure_channel(peer_address)
+                        stub = multiplayer_pb2_grpc.PeerDiscoveryStub(channel)
+
+                        await stub.RemovePeer(
+                                multiplayer_pb2.Peer(
+                                        uuid=self.peer.uuid,
+                                        address=self.peer.address()
+                                )
+                        )
+
+                        await channel.close()
+        """
+
+
+        async def stop(self):
+            print(f"\n🛑 Stopping and removing from peers...")
+            dead_peers = []
+
+            for peer_uuid, peer_address in list(self.peer.peers.items()):
+                if peer_address == self.peer.address():
+                    continue
+    
+                print(f"   📡 Removing from {peer_address}")
+                try:
+                    channel = grpc.aio.insecure_channel(peer_address)
+                    stub = multiplayer_pb2_grpc.PeerDiscoveryStub(channel)
+
+                    await stub.RemovePeer(
+                        multiplayer_pb2.Peer(
+                            uuid=self.peer.uuid,
+                            address=self.peer.address()
+                        )
+                    )
+                    await channel.close()
+                    print(f"   ✅ Removed from {peer_address}")
+
+                except Exception as e:
+                    print(f"   ❌ Failed to remove from {peer_address}: {e}")
+                    dead_peers.append(peer_uuid)
+
+            # Remove peers mortos da lista local
+            for peer_uuid in dead_peers:
+                if peer_uuid in self.peer.peers:
+                    del self.peer.peers[peer_uuid]
+                    print(f"   🗑️ Removed dead peer {peer_uuid[:8]}... from local list")
+
+            print(f"📊 Remaining peers: {len(self.peer.peers)}")
 
 
 def main():
