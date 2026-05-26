@@ -43,25 +43,46 @@ class Terminal:
         print(BANNER)
         print(green(f'  Bem-vindo, {bold(self.state.self_player.name)}!'))
         print(cyan('  Escreve "help" para ver os comandos.'))
-        await asyncio.gather(self._input_loop(), self._event_printer())
+        
+        input_task = asyncio.create_task(self._input_loop())
+        printer_task = asyncio.create_task(self._event_printer())
+        
+        try:
+            done, pending = await asyncio.wait(
+                [input_task, printer_task], 
+                return_when=asyncio.FIRST_COMPLETED
+            )
+        except asyncio.CancelledError:
+            pass
+        finally:
+            self._running = False
+            input_task.cancel()
+            printer_task.cancel()
+            await asyncio.gather(input_task, printer_task, return_exceptions=True)
 
     async def _input_loop(self):
-        while self._running:
-            try:
-                raw = await aioconsole.ainput(cyan('⚔  > '))
-            except (EOFError, KeyboardInterrupt):
-                break
-            raw = raw.strip()
-            if not raw: continue
-            parts = raw.split(maxsplit=1)
-            cmd = parts[0].lower()
-            args = parts[1] if len(parts) > 1 else ''
-            if cmd in ('quit', 'exit'):
-                print(yellow('A sair...'))
-                self._running = False
-                if self.handler: await self.handler('quit', '')
-                break
-            await self._dispatch(cmd, args)
+        try:
+            while self._running:
+                try:
+                    raw = await aioconsole.ainput(cyan('⚔  > '))
+                except (EOFError, KeyboardInterrupt):
+                    self._running = False
+                    break
+                
+                raw = raw.strip()
+                if not raw: continue
+                parts = raw.split(maxsplit=1)
+                cmd = parts[0].lower()
+                args = parts[1] if len(parts) > 1 else ''
+                
+                if cmd in ('quit', 'exit'):
+                    print(yellow('A sair...'))
+                    self._running = False
+                    if self.handler: await self.handler('quit', '')
+                    break
+                await self._dispatch(cmd, args)
+        except asyncio.CancelledError:
+            pass
 
     async def _dispatch(self, cmd, args):
         try:
@@ -96,10 +117,15 @@ class Terminal:
             print(red(f'Erro: {exc}'))
 
     async def _event_printer(self):
-        while self._running:
-            try:
-                msg = await asyncio.wait_for(self._event_queue.get(), timeout=0.5)
-                print(f'\n  {yellow("►")} {msg}')
-                if self._running: print(cyan('⚔  > '), end='', flush=True)
-            except asyncio.TimeoutError: continue
-            except Exception: break
+        try:
+            while self._running:
+                try:
+                    msg = await asyncio.wait_for(self._event_queue.get(), timeout=0.5)
+                    print(f'\n  {yellow("►")} {msg}')
+                    if self._running: print(cyan('⚔  > '), end='', flush=True)
+                except asyncio.TimeoutError:
+                    continue
+                except Exception:
+                    break
+        except asyncio.CancelledError:
+            pass
