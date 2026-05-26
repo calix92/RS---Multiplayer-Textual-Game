@@ -188,6 +188,9 @@ class BroadcastClient:
             
             # Pede o mundo
             request = game_pb2.SyncRequest(reader_id=self.dht.node_id)
+
+
+
             response = await stub.SyncWorld(request)
             
             await channel.close()
