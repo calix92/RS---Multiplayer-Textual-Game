@@ -12,14 +12,29 @@ from utils.terminal import Terminal
 logging.basicConfig(level=logging.WARNING)
 
 def get_lan_ip():
-    """Tenta descobrir o IP da rede local."""
+    """Tenta descobrir o IP da rede local de forma robusta."""
+    # Tenta vários destinos para forçar o SO a escolher a interface de rede ativa
+    for target in ["8.8.8.8", "10.255.255.255", "192.168.1.255"]:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect((target, 1))
+                ip = s.getsockname()[0]
+                if ip and not ip.startswith("127."):
+                    return ip
+        except Exception:
+            continue
+
+    # Alternativa: Ver o IP associado ao hostname
     try:
-        # Tenta ligar-se a um endereço externo para o SO escolher a interface correta
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.connect(("8.8.8.8", 80))
-            return s.getsockname()[0]
+        hostname = socket.gethostname()
+        ips = socket.gethostbyname_ex(hostname)[2]
+        for ip in ips:
+            if not ip.startswith("127."):
+                return ip
     except Exception:
-        return "127.0.0.1"
+        pass
+    
+    return "127.0.0.1"
 
 async def maintenance_loop(player_id, name, ip, port, state, dht, client):
     """Mantém a rede viva e reconecta se necessário."""
@@ -51,10 +66,17 @@ async def main():
     parser.add_argument("--bootstrap", type=str, help="IP:Porta do nó de entrada")
     args = parser.parse_args()
 
-    # Se o IP for 127.0.0.1 e houver bootstrap remoto, avisar
-    if args.ip == "127.0.0.1" and args.bootstrap and not args.bootstrap.startswith("127.0.0.1"):
-        print("\033[93mAVISO: Estás a usar 127.0.0.1 mas a tentar ligar a um bootstrap remoto.")
-        print("Isto pode impedir que outros jogadores te vejam.\033[0m\n")
+    # Se o IP detetado for 127.0.0.1, dar um aviso sério
+    if args.ip == "127.0.0.1":
+        print("\033[91m[AVISO CRÍTICO]\033[0m O teu IP foi detetado como 127.0.0.1.")
+        print("Isto acontece quando não há uma interface de rede ativa ou sem rota por defeito.")
+        print("Se estás num Hotspot, tenta ligar o Wi-Fi ou Dados Móveis.")
+        print("Podes forçar o IP com: --ip <teu_ip_na_rede>\n")
+    
+    print("\033[94m[DICA]\033[0m Se não conseguires ligar ao teu colega:")
+    print("1. Verifica se a Firewall do Windows/Linux está a bloquear a porta", args.port)
+    print("2. Alguns Hotspots têm 'Isolamento de AP' que impede a comunicação entre dispositivos.")
+    print("3. Garante que ambos estão na MESMA rede Wi-Fi.\n")
 
     player_id = node_id_from(args.ip, args.port)
     state = GameState(player_id, args.name, args.ip, args.port)
@@ -124,7 +146,17 @@ async def main():
             else:
                 terminal.push_event("Nenhum nó encontrado na DHT.")
         elif cmd == "peers":
-            terminal.push_event(f"DHT: {', '.join([p.name for p in dht.all_peers()])}")
+            peers = dht.all_peers()
+            if not peers:
+                terminal.push_event("Nenhum nó conhecido na DHT.")
+            else:
+                p_list = [f"{p.name} ({p.ip}:{p.port})" for p in peers]
+                terminal.push_event(f"DHT ({len(peers)} nós): {', '.join(p_list)}")
+            
+            # Mostrar também os peers no estado do jogo
+            g_peers = [f"{p.name} ({p.ip}:{p.port})" for p in state.peers.values()]
+            if g_peers:
+                terminal.push_event(f"Jogo ({len(g_peers)} ativos): {', '.join(g_peers)}")
 
     terminal.handler = action_handler
 
