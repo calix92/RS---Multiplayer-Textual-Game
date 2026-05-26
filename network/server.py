@@ -28,6 +28,7 @@ class GameServicer(game_pb2_grpc.GameServiceServicer):
                 await self.state.add_peer(node.node_id, node.name, node.ip, node.port)
 
     async def SyncWorld(self, request, context):
+        self.on_event(f"🌐 Sincronização pedida por {request.reader_id[:8]}")
         await self._force_peer(request.reader_id, "Peer")
         return game_pb2.WorldState(world_data_json=await self.state.get_world_state_json())
 
@@ -60,6 +61,12 @@ class GameServicer(game_pb2_grpc.GameServiceServicer):
 async def start_server(host, port, game_state, dht_node, on_event):
     server = grpc_aio.server()
     game_pb2_grpc.add_GameServiceServicer_to_server(GameServicer(game_state, dht_node, on_event), server)
+    
+    # Ouvir em todas as interfaces IPv4 e IPv6
     server.add_insecure_port(f"0.0.0.0:{port}")
+    try:
+        server.add_insecure_port(f"[::]:{port}")
+    except: pass
+    
     await server.start()
     return server

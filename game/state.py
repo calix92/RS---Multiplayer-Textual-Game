@@ -309,14 +309,14 @@ class GameState:
         p = self.self_player
         alive = "💚" if p.is_alive() else "💀"
         lines.append(f"  {alive} YOU  {p.name:<16} "
-                     f"HP {p.hp:>3}/{MAX_HP}  📍{p.position}")
+                     f"HP {p.hp:>3}/{MAX_HP}  📍{p.position} ({p.ip}:{p.port})")
         # Peers
         if self.peers:
             lines.append("─" * 50)
             for peer in self.peers.values():
                 alive = "💚" if peer.is_alive() else "💀"
                 lines.append(f"  {alive}     {peer.name:<16} "
-                              f"HP {peer.hp:>3}/{MAX_HP}  📍{peer.position}")
+                              f"HP {peer.hp:>3}/{MAX_HP}  📍{peer.position} ({peer.ip}:{peer.port})")
         lines.append("═" * 50)
         return "\n".join(lines)
 
