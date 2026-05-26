@@ -1,6 +1,8 @@
 import asyncio
 import argparse
 import logging
+import socket
+import sys
 from game.state import GameState
 from dht.kademlia import DHTNode, NodeInfo, node_id_from
 from network.server import start_server
@@ -8,6 +10,16 @@ from network.client import BroadcastClient, PeerClient
 from utils.terminal import Terminal
 
 logging.basicConfig(level=logging.WARNING)
+
+def get_lan_ip():
+    """Tenta descobrir o IP da rede local."""
+    try:
+        # Tenta ligar-se a um endereço externo para o SO escolher a interface correta
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            return s.getsockname()[0]
+    except Exception:
+        return "127.0.0.1"
 
 async def maintenance_loop(player_id, name, ip, port, state, dht, client):
     """Mantém a rede viva e reconecta se necessário."""
@@ -31,12 +43,18 @@ async def maintenance_loop(player_id, name, ip, port, state, dht, client):
         logging.error(f"Error in maintenance_loop: {e}")
 
 async def main():
+    detected_ip = get_lan_ip()
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", required=True)
-    parser.add_argument("--ip", default="127.0.0.1")
+    parser.add_argument("--ip", default=detected_ip, help=f"O teu IP (detetado: {detected_ip})")
     parser.add_argument("--port", type=int, required=True)
-    parser.add_argument("--bootstrap", type=str)
+    parser.add_argument("--bootstrap", type=str, help="IP:Porta do nó de entrada")
     args = parser.parse_args()
+
+    # Se o IP for 127.0.0.1 e houver bootstrap remoto, avisar
+    if args.ip == "127.0.0.1" and args.bootstrap and not args.bootstrap.startswith("127.0.0.1"):
+        print("\033[93mAVISO: Estás a usar 127.0.0.1 mas a tentar ligar a um bootstrap remoto.")
+        print("Isto pode impedir que outros jogadores te vejam.\033[0m\n")
 
     player_id = node_id_from(args.ip, args.port)
     state = GameState(player_id, args.name, args.ip, args.port)
@@ -47,10 +65,18 @@ async def main():
     # IMPORTANTE: Guardar a variável 'server' para não ser apagada!
     server = await start_server(args.ip, args.port, state, dht, terminal.push_event)
 
+    print(f"\n--- CONFIGURAÇÃO DE REDE ---")
+    print(f"O teu nome: {args.name}")
+    print(f"O teu IP: {args.ip}")
+    print(f"A ouvir na porta: {args.port}")
+    print(f"ID do Jogador: {player_id[:12]}...")
+    if args.bootstrap:
+        print(f"A tentar ligar ao Bootstrap: {args.bootstrap}")
+    print(f"----------------------------\n")
+
     async def action_handler(cmd_raw, args_str):
         cmd = cmd_raw.lower().strip()
         if cmd in ("quit", "exit"):
-            # A limpeza agora é feita no finally do main()
             pass
         elif cmd == "ping":
             target = next((p for p in state.peers.values() if p.name.lower() == args_str.lower()), None)
@@ -74,9 +100,7 @@ async def main():
                 ok, err = await state.self_attack(target.player_id, weapon)
                 if ok:
                     terminal.push_event(f"Atacaste {target.name} com {weapon}!")
-                    # Broadcast da intenção de ataque para visibilidade
                     await client.broadcast(player_id, args.name, 2, f"Atacou {target.name} com {weapon}!")
-                    # Envio real do ataque (unicast)
                     await client.send_to(NodeInfo(target.player_id, target.ip, target.port, target.name), player_id, args.name, 0, weapon)
                 else: terminal.push_event(f"Erro: {err}")
             else: terminal.push_event("Alvo não encontrado ou noutra zona.")
@@ -110,21 +134,21 @@ async def main():
             b_id = node_id_from(b_ip, int(b_port))
             b_node = NodeInfo(b_id, b_ip, int(b_port), "Host")
             
-            # 1. Adicionar o nó de bootstrap à DHT e ao estado
             dht.add_peer(b_node)
             await state.add_peer(b_id, "Host", b_ip, int(b_port))
             
-            # 2. Sincronização de alto nível (HP, Posições)
             world = await client.sync_with_host(b_node)
-            if world: await state.apply_world_state(world, dht)
+            if world: 
+                await state.apply_world_state(world, dht)
+                terminal.push_event(f"Sincronização com {args.bootstrap} OK")
+            else:
+                terminal.push_event(f"Aviso: Não foi possível sincronizar o estado inicial.")
             
-            # 3. Bootstrap da DHT (Procurar vizinhos via FindNode)
-            # Criamos uma stub temporária para o bootstrap
             def stub_factory(ip, port):
                 return client._get_client(NodeInfo("", ip, port))
             
             await dht.bootstrap(stub_factory, [(b_ip, int(b_port))])
-            terminal.push_event(f"Bootstrap concluído com {b_ip}:{b_port}")
+            terminal.push_event(f"Bootstrap da DHT concluído.")
         except Exception as e:
             terminal.push_event(f"Erro no bootstrap: {e}")
     
@@ -135,7 +159,6 @@ async def main():
         await terminal.run_loop()
     finally:
         m_task.cancel()
-        # Tenta sair graciosamente
         try:
             await asyncio.wait_for(client.announce_leave(player_id, args.name), timeout=2.0)
         except: pass
