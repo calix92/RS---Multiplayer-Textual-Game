@@ -66,11 +66,11 @@ class PeerClient:
                 stub.SendAction(req), timeout=TIMEOUT)
             return resp
         except asyncio.TimeoutError:
-            log.warning("Timeout sending to %s", self.address)
+            log.error("Timeout sending to %s", self.address)
         except grpc.RpcError as e:
-            log.warning("gRPC error to %s: %s", self.address, e.details())
+            log.error("gRPC error to %s: %s", self.address, e.details())
         except Exception as exc:
-            log.warning("Error sending to %s: %s", self.address, exc)
+            log.error("Error sending to %s: %s", self.address, exc)
         return None
 
     async def ping(self, sender_id: str) -> bool:

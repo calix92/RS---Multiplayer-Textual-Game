@@ -7,7 +7,7 @@ from network.server import start_server
 from network.client import BroadcastClient, PeerClient
 from utils.terminal import Terminal
 
-logging.basicConfig(level=logging.ERROR)
+logging.basicConfig(level=logging.WARNING)
 
 async def maintenance_loop(player_id, name, ip, port, state, dht, client):
     """Mantém a rede viva e reconecta se necessário."""
@@ -89,7 +89,7 @@ async def main():
             dht.add_peer(b_node)
             await state.add_peer(b_id, "Host", b_ip, int(b_port))
             world = await client.sync_with_host(b_node)
-            if world: await state.apply_world_state(world)
+            if world: await state.apply_world_state(world, dht)
         except: pass
     
     await client.announce_join(player_id, args.name, args.ip, args.port)

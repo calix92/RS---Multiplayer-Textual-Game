@@ -195,9 +195,7 @@ class GameState:
     async def process_join(self, sender_id: str, sender_name: str,
                             ip: str, port: int) -> str:
         added = await self.add_peer(sender_id, sender_name, ip, port)
-        msg = (f"{sender_name} joined!" if added
-               else f"{sender_name} is already known")
-        return msg
+        return f"{sender_name} joined!" if added else ""
 
     async def process_leave(self, sender_id: str, sender_name: str) -> str:
         await self.remove_peer(sender_id)
@@ -255,14 +253,14 @@ class GameState:
             "position": p.position
         }
 
-    async def apply_world_state(self, json_data: str):
-        """Lê o JSON recebido e preenche o meu dicionário de peers."""
+    async def apply_world_state(self, json_data: str, dht=None):
+        """Lê o JSON recebido e preenche o meu dicionário de peers e opcionalmente a DHT."""
         data = json.loads(json_data)
         async with self._lock:
             for p_dict in data:
                 pid = p_dict["player_id"]
                 if pid == self.self_player.player_id:
-                    continue # Não me vou sobrepor a mim mesmo
+                    continue 
                 
                 new_player = Player(
                     player_id = pid,
@@ -274,7 +272,12 @@ class GameState:
                     position  = p_dict["position"]
                 )
                 self.peers[pid] = new_player
-            self._log("system", "SYNC", "world", "Mundo sincronizado com sucesso")
+
+                if dht:
+                    from dht.kademlia import NodeInfo
+                    dht.add_peer(NodeInfo(pid, p_dict["ip"], p_dict["port"], p_dict["name"]))
+
+            self._log("system", "SYNC", "world", f"Mundo sincronizado ({len(data)} jogadores)")
 
     
     async def clean_inactive_peers(self, timeout: int = 15):
