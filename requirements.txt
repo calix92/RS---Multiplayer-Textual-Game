@@ -1,5 +1,6 @@
 grpcio
 grpcio-tools
 protobuf
+prompt_toolkit
 aioconsole
 kademlia

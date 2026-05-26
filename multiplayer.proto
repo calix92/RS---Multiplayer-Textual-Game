@@ -19,9 +19,15 @@ message AllPeers {
 
 service Chat {
   rpc Broadcast (BroadcastMessage) returns (Empty);
+  rpc Unicast (UnicastMessage) returns (Empty);
 }
 
 message BroadcastMessage {
+  string from_uuid = 1;
+  string text = 2;
+}
+
+message UnicastMessage {
   string from_uuid = 1;
   string text = 2;
 }

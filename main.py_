@@ -120,34 +120,10 @@ class Network:
 
         async def chat_loop(self):
             while True:
-                message = await ainput("> ")
+                message = await ainput()
 
                 await self.broadcast(message)
 
-
-        """
-        async def broadcast(self, message):
-            print(f"📤 Broadcasting to {len(self.peer.peers)} peers...")
-            for peer_address in list(self.peer.peers.values()):
-                if peer_address == self.peer.address():
-                    print(f"   ⏭️ Skipping self: {peer_address}")
-                    continue
-
-                print(f"   📡 Sending to {peer_address}")
-                try:
-                    channel = grpc.aio.insecure_channel(peer_address)
-                    stub = multiplayer_pb2_grpc.ChatStub(channel)
-                    await stub.Broadcast(
-                        multiplayer_pb2.BroadcastMessage(
-                            from_uuid=self.peer.uuid,
-                            text=message
-                        )
-                    )
-                    await channel.close()
-                    print(f"   ✅ Sent to {peer_address}")
-                except Exception as e:
-                    print(f"   ❌ Failed to send to {peer_address}: {e}")
-        """
 
         async def broadcast(self, message):
             for peer_address in self.peer.peers.values():
@@ -180,18 +156,6 @@ class Network:
                 await self.server.stop(grace=1)
 
 
-            #chat_task = asyncio.create_task(self.chat_loop())
-
-            """
-            try:
-                    await self.server.wait_for_termination()
-            except KeyboardInterrupt:
-                    pass
-            finally:
-                chat_task.cancel()
-                await self.server.stop(grace=1)
-            """
-
 
         async def stop(self):
                 for peer_address in list(self.peer.peers.values()):
@@ -211,50 +175,13 @@ class Network:
                         await channel.close()
 
 
-        """
-        async def stop(self):
-            print(f"\n🛑 Stopping and removing from peers...")
-            dead_peers = []
-
-            for peer_uuid, peer_address in list(self.peer.peers.items()):
-                if peer_address == self.peer.address():
-                    continue
-    
-                print(f"   📡 Removing from {peer_address}")
-                try:
-                    channel = grpc.aio.insecure_channel(peer_address)
-                    stub = multiplayer_pb2_grpc.PeerDiscoveryStub(channel)
-
-                    await stub.RemovePeer(
-                        multiplayer_pb2.Peer(
-                            uuid=self.peer.uuid,
-                            address=self.peer.address()
-                        )
-                    )
-                    await channel.close()
-                    print(f"   ✅ Removed from {peer_address}")
-
-                except Exception as e:
-                    print(f"   ❌ Failed to remove from {peer_address}: {e}")
-                    dead_peers.append(peer_uuid)
-
-            # Remove peers mortos da lista local
-            for peer_uuid in dead_peers:
-                if peer_uuid in self.peer.peers:
-                    del self.peer.peers[peer_uuid]
-                    print(f"   🗑️ Removed dead peer {peer_uuid[:8]}... from local list")
-
-            print(f"📊 Remaining peers: {len(self.peer.peers)}")
-        """
-
-
 def main():
         parser = argparse.ArgumentParser()
 
-        parser.add_argument("--username", required=True)
+        parser.add_argument("-u", "--username", required=True)
         parser.add_argument("--host")
-        parser.add_argument("--port", type=int)
-        parser.add_argument("--bootstrap")
+        parser.add_argument("-p", "--port", type=int)
+        parser.add_argument("-b", "--bootstrap")
 
         args = parser.parse_args()
 
