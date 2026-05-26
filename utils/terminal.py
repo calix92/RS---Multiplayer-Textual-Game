@@ -18,6 +18,7 @@ MENU DE COMANDOS:
 - status               : Ver HP de todos
 - log                  : Ver ultimos eventos
 - peers                : Ver nos da rede
+- ping <nome>          : Testar ligação a um jogador
 - respawn              : Reviver
 - help                 : Este menu
 - quit                 : Sair
@@ -97,6 +98,9 @@ class Terminal:
                 print('\n'.join(events) if events else 'Sem eventos.')
             elif cmd == 'peers':
                 await self.handler('peers', args)
+            elif cmd == 'ping':
+                if not args: print(red('Uso: ping <nome>')); return
+                await self.handler('ping', args.strip())
             elif cmd == 'attack':
                 if not args: print(red('Uso: attack <nome> [arma]')); return
                 await self.handler('attack', args)
