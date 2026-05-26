@@ -1,22 +1,9 @@
 services:
-  player1:
+  game:
     build:
       context: .
-    container_name: player1
-    command: ["--name", "Arqueiro", "--port", "50051"]
-    ports:
-      - "50051:50051"
+    network_mode: "host"
     stdin_open: true
     tty: true
-
-  player2:
-    build:
-      context: .
-    container_name: player2
-    command: ["--name", "Guerreiro", "--port", "50052", "--bootstrap", "player1:50051"]
-    ports:
-      - "50052:50052"
-    stdin_open: true
-    tty: true
-    depends_on:
-      - player1
+    # O comando será passado via linha de comando ou variáveis de ambiente
+    # Exemplo de uso local: docker compose run game --name Player --port 50051
