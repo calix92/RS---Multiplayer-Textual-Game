@@ -17,23 +17,43 @@ class GameServicer(game_pb2_grpc.GameServiceServicer):
         self.dht   = dht_node
         self.on_event = on_event
 
-    async def _force_peer(self, sid, sname):
-        """Garante que o peer existe e está atualizado."""
+    async def _force_peer(self, sid, sname, context=None):
+        """Garante que o peer existe e está atualizado. Tenta usar o IP real do context se disponível."""
         if sid == self.state.self_player.player_id: return
+        
+        # Tenta descobrir o IP real do gajo que nos chamou
+        caller_ip = None
+        if context:
+            p = context.peer()
+            if p.startswith("ipv4:"):
+                caller_ip = p.split(":")[1]
+            elif p.startswith("ipv6:"):
+                # Simplificação: ignorar IPv6 por agora ou tratar se necessário
+                pass
+
         if sid in self.state.peers:
             self.state.peers[sid].touch()
+            # Se o IP mudou (ex: mudou de rede), atualizamos
+            if caller_ip and self.state.peers[sid].ip != caller_ip and caller_ip != "127.0.0.1":
+                self.state.peers[sid].ip = caller_ip
         else:
+            # Tenta encontrar na DHT primeiro
             node = next((n for n in self.dht.all_peers() if n.node_id == sid), None)
             if node:
-                await self.state.add_peer(node.node_id, node.name, node.ip, node.port)
+                # Se o IP da DHT parece errado mas temos o caller_ip, preferimos o caller_ip
+                actual_ip = caller_ip if caller_ip and caller_ip != "127.0.0.1" else node.ip
+                await self.state.add_peer(node.node_id, node.name, actual_ip, node.port)
+            elif caller_ip:
+                # Se não está na DHT mas temos o IP dele, adicionamos o que sabemos
+                await self.state.add_peer(sid, sname or "Peer_Desconhecido", caller_ip, 50051) # Assume default port if unknown
 
     async def SyncWorld(self, request, context):
         self.on_event(f"🌐 Sincronização pedida por {request.reader_id[:8]}")
-        await self._force_peer(request.reader_id, "Peer")
+        await self._force_peer(request.reader_id, "Peer", context)
         return game_pb2.WorldState(world_data_json=await self.state.get_world_state_json())
 
     async def SendAction(self, request, context):
-        await self._force_peer(request.sender_id, request.sender_name)
+        await self._force_peer(request.sender_id, request.sender_name, context)
         at, sid, sname, pay = request.action, request.sender_id, request.sender_name, request.payload
         hp, msg = 0, ""
         try:
@@ -44,6 +64,12 @@ class GameServicer(game_pb2_grpc.GameServiceServicer):
             elif at == 4:
                 parts = pay.split(":")
                 ip, port = (parts[0], int(parts[1])) if len(parts) > 1 else (sid, 0)
+                
+                # Se o gajo diz que o IP dele é 127.0.0.1 mas nós o vemos noutro IP, corrigimos
+                p = context.peer()
+                if (ip == "127.0.0.1" or ip == "localhost") and p.startswith("ipv4:"):
+                    ip = p.split(":")[1]
+
                 msg = await self.state.process_join(sid, sname, ip, port)
                 self.dht.add_peer(NodeInfo(sid, ip, port, sname))
             elif at == 5: msg = await self.state.process_leave(sid, sname)
@@ -52,7 +78,7 @@ class GameServicer(game_pb2_grpc.GameServiceServicer):
         return game_pb2.ActionResponse(success=True, message=msg, hp_delta=hp)
 
     async def Ping(self, request, context):
-        await self._force_peer(request.sender_id, "Peer")
+        await self._force_peer(request.sender_id, "Peer", context)
         return game_pb2.PingResponse(node_id=self.dht.node_id, alive=True)
 
     async def FindNode(self, request, context): return game_pb2.FindNodeResponse(closest_nodes=[])
