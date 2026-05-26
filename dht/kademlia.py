@@ -160,17 +160,17 @@ class DHTNode:
             peer = NodeInfo(peer_id, ip, port)
             try:
                 stub = stub_factory(ip, port)
-                resp = await stub.Ping({"sender_id": self.node_id})
-                if resp.alive:
+                alive = await stub.ping(self.node_id)
+                if alive:
                     self.add_peer(peer)
                     log.info("Bootstrap contact %s:%d  OK", ip, port)
                     # Ask it for nodes close to us
-                    fn_resp = await stub.FindNode({
-                        "target_id": self.node_id,
-                        "requester_id": self.node_id,
-                    })
-                    for n in fn_resp.closest_nodes:
-                        self.add_peer(NodeInfo(n.node_id, n.ip, n.port, n.name))
+                    closest_nodes = await stub.find_node(
+                        target_id=self.node_id,
+                        requester_id=self.node_id,
+                    )
+                    for n in closest_nodes:
+                        self.add_peer(n)
             except Exception as exc:
                 log.warning("Bootstrap %s:%d failed: %s", ip, port, exc)
 

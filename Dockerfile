@@ -1,27 +1,42 @@
-# Usamos a 3.11-slim, que é a "golden version" para gRPC e Redes
-FROM python:3.11-slim
+# --- Estágio de Build ---
+FROM python:3.11-slim AS builder
 
-# Diretório de trabalho
 WORKDIR /app
 
-# Instalar dependências do sistema num único passo para poupar espaço
-RUN apt-get update && apt-get install -y \
+# Instalar dependências de compilação
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Copiar os requisitos
-COPY requirements.txt .
+# Configurar virtualenv para isolar dependências
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
-# Atualizar o pip e instalar TUDO o que é preciso para compilar protos
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel grpcio-tools
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copiar o resto do código
-COPY . .
-
-# Limpar versões antigas dos protos e compilar as novas
-RUN rm -f proto/game_pb2.py proto/game_pb2_grpc.py
+# Compilação dos Protos (precisamos do código proto agora)
+COPY proto/ ./proto/
 RUN python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. proto/game.proto
 
-# Comando de entrada
+# --- Estágio Final ---
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Variáveis de ambiente para Python em Docker
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/opt/venv/bin:$PATH"
+
+# Copiar o virtualenv e o código
+COPY --from=builder /opt/venv /opt/venv
+COPY . .
+COPY --from=builder /app/proto/*_pb2*.py ./proto/
+
+# Remover ficheiros desnecessários que possam ter sido copiados
+RUN rm -rf proto/*.proto requirements.txt Dockerfile compose.yaml notasParaCorrer.txt .dockerignore
+
+# O entrypoint mantém-se
 ENTRYPOINT ["python", "main.py"]

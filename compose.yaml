@@ -1,3 +1,7 @@
+networks:
+  game-net:
+    driver: bridge
+
 services:
   player1:
     build:
@@ -8,6 +12,8 @@ services:
       - "50051:50051"
     stdin_open: true
     tty: true
+    networks:
+      - game-net
 
   player2:
     build:
@@ -20,3 +26,5 @@ services:
     tty: true
     depends_on:
       - player1
+    networks:
+      - game-net

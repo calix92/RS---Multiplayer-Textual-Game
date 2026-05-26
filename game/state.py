@@ -161,8 +161,8 @@ class GameState:
                 self._log(sender_name, "ATTACK_BLOCKED", self.self_player.name, "Tentativa de ataque à distância")
                 return 0, f"Ataque de {sender_name} ignorado: Fora de alcance."
 
-            # Se estiverem no mesmo local, processa o dano normalmente
-            damage = 10 # ou baseado na arma
+            # Se estiverem no mesmo local, processa o dano baseado na arma
+            damage = WEAPON_DAMAGE.get(weapon.lower(), 10)
             result = self.self_player.take_damage(damage, sender_name)
             self._log(sender_name, "ATTACK", self.self_player.name, f"{weapon} (-{damage}HP)")
             return -damage, result

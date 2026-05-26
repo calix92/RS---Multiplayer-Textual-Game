@@ -55,8 +55,23 @@ class GameServicer(game_pb2_grpc.GameServiceServicer):
         await self._force_peer(request.sender_id, "Peer")
         return game_pb2.PingResponse(node_id=self.dht.node_id, alive=True)
 
-    async def FindNode(self, request, context): return game_pb2.FindNodeResponse(closest_nodes=[])
-    async def StoreNode(self, request, context): return game_pb2.StoreNodeResponse(success=True)
+    async def FindNode(self, request, context):
+        closest = self.dht.on_find_node(request.target_id, request.requester_id)
+        # Convert NodeInfo objects to protobuf NodeInfo messages
+        pb_nodes = [
+            game_pb2.NodeInfo(
+                node_id=n.node_id,
+                ip=n.ip,
+                port=n.port,
+                name=n.name
+            ) for n in closest
+        ]
+        return game_pb2.FindNodeResponse(closest_nodes=pb_nodes)
+
+    async def StoreNode(self, request, context):
+        node = request.node
+        success = self.dht.on_store_node(NodeInfo(node.node_id, node.ip, node.port, node.name))
+        return game_pb2.StoreNodeResponse(success=success)
 
 async def start_server(host, port, game_state, dht_node, on_event):
     server = grpc_aio.server()

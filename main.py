@@ -67,12 +67,17 @@ async def main():
             terminal.push_event(res)
             await client.broadcast(player_id, args.name, 1, args_str)
         elif cmd == "attack":
-            target = next((p for p in state.peers.values() if p.name.lower() == args_str.split()[0].lower()), None)
+            target_name = args_str.split()[0] if args_str else ""
+            weapon = args_str.split()[1] if len(args_str.split()) > 1 else "sword"
+            target = next((p for p in state.peers.values() if p.name.lower() == target_name.lower()), None)
             if target:
-                ok, err = await state.self_attack(target.player_id, "sword")
+                ok, err = await state.self_attack(target.player_id, weapon)
                 if ok:
-                    terminal.push_event(f"Atacaste {target.name}!")
-                    await client.send_to(NodeInfo(target.player_id, target.ip, target.port, target.name), player_id, args.name, 0, "sword")
+                    terminal.push_event(f"Atacaste {target.name} com {weapon}!")
+                    # Broadcast da intenção de ataque para visibilidade
+                    await client.broadcast(player_id, args.name, 2, f"Atacou {target.name} com {weapon}!")
+                    # Envio real do ataque (unicast)
+                    await client.send_to(NodeInfo(target.player_id, target.ip, target.port, target.name), player_id, args.name, 0, weapon)
                 else: terminal.push_event(f"Erro: {err}")
             else: terminal.push_event("Alvo não encontrado ou noutra zona.")
         elif cmd == "heal":
@@ -83,6 +88,17 @@ async def main():
         elif cmd == "respawn":
             await state.self_respawn()
             await client.announce_join(player_id, args.name, args.ip, args.port)
+        elif cmd == "find":
+            if not args_str:
+                terminal.push_event("Uso: find <player_id>")
+                return
+            terminal.push_event(f"A procurar {args_str[:8]} na DHT...")
+            closest = dht.find_closest(args_str)
+            if closest:
+                results = ", ".join([f"{n.name} ({n.ip}:{n.port})" for n in closest])
+                terminal.push_event(f"Nós mais próximos encontrados: {results}")
+            else:
+                terminal.push_event("Nenhum nó encontrado na DHT.")
         elif cmd == "peers":
             terminal.push_event(f"DHT: {', '.join([p.name for p in dht.all_peers()])}")
 
@@ -93,11 +109,24 @@ async def main():
             b_ip, b_port = args.bootstrap.split(":")
             b_id = node_id_from(b_ip, int(b_port))
             b_node = NodeInfo(b_id, b_ip, int(b_port), "Host")
+            
+            # 1. Adicionar o nó de bootstrap à DHT e ao estado
             dht.add_peer(b_node)
             await state.add_peer(b_id, "Host", b_ip, int(b_port))
+            
+            # 2. Sincronização de alto nível (HP, Posições)
             world = await client.sync_with_host(b_node)
             if world: await state.apply_world_state(world, dht)
-        except: pass
+            
+            # 3. Bootstrap da DHT (Procurar vizinhos via FindNode)
+            # Criamos uma stub temporária para o bootstrap
+            def stub_factory(ip, port):
+                return client._get_client(NodeInfo("", ip, port))
+            
+            await dht.bootstrap(stub_factory, [(b_ip, int(b_port))])
+            terminal.push_event(f"Bootstrap concluído com {b_ip}:{b_port}")
+        except Exception as e:
+            terminal.push_event(f"Erro no bootstrap: {e}")
     
     await client.announce_join(player_id, args.name, args.ip, args.port)
     m_task = asyncio.create_task(maintenance_loop(player_id, args.name, args.ip, args.port, state, dht, client))

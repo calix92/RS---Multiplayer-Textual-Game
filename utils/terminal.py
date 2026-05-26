@@ -18,6 +18,7 @@ MENU DE COMANDOS:
 - status               : Ver HP de todos
 - log                  : Ver ultimos eventos
 - peers                : Ver nos da rede
+- find <id>            : Procurar endereco de um ID na DHT
 - ping <nome>          : Testar ligação a um jogador
 - respawn              : Reviver
 - help                 : Este menu
@@ -125,8 +126,13 @@ class Terminal:
             while self._running:
                 try:
                     msg = await asyncio.wait_for(self._event_queue.get(), timeout=0.5)
-                    print(f'\n  {yellow("►")} {msg}')
-                    if self._running: print(cyan('⚔  > '), end='', flush=True)
+                    # \r -> volta ao início da linha
+                    # \033[K -> limpa a linha até ao fim
+                    print(f'\r\033[K  {yellow("►")} {msg}')
+                    # Redesenha o prompt e o que o utilizador já tinha escrito (se possível)
+                    # Nota: aioconsole é difícil de sincronizar 100%, mas isto ajuda imenso
+                    if self._running:
+                        print(cyan('⚔  > '), end='', flush=True)
                 except asyncio.TimeoutError:
                     continue
                 except Exception:
