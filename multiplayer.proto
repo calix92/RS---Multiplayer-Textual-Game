@@ -1,5 +1,7 @@
 syntax = "proto3";
 
+message Empty {}
+
 service PeerDiscovery {
     rpc RegisterPeer (Peer) returns (Empty);
     rpc GetPeers (Empty) returns (AllPeers);
@@ -14,4 +16,11 @@ message AllPeers {
     map<string, string> peers = 1;
 }
 
-message Empty {}
+service Chat {
+  rpc Broadcast (BroadcastMessage) returns (Empty);
+}
+
+message BroadcastMessage {
+  string from_uuid = 1;
+  string text = 2;
+}

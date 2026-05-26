@@ -42,8 +42,8 @@ class PeerDiscovery(multiplayer_pb2_grpc.PeerDiscoveryServicer):
 
 
 class Chat(multiplayer_pb2_grpc.ChatServicer):
-    async def Broadcast(self, request, context):
-        print(f"From {request.from_uuid} to everyone: {request.text}")
+    async def BroadcastMessage(self, request, context):
+        print(f"From {request.from_uuid} to everyone: {request.message}")
         return multiplayer_pb2.Empty()
 
 
@@ -111,29 +111,6 @@ class Network:
 
 
         async def broadcast(self, message):
-            print(f"📤 Broadcasting to {len(self.peer.peers)} peers...")
-            for peer_address in self.peer.peers.values():
-                if peer_address == self.peer.address():
-                    print(f"   ⏭️ Skipping self: {peer_address}")
-                    continue
-
-                print(f"   📡 Sending to {peer_address}")
-                try:
-                    channel = grpc.aio.insecure_channel(peer_address)
-                    stub = multiplayer_pb2_grpc.ChatStub(channel)
-                    await stub.Broadcast(
-                        multiplayer_pb2.BroadcastMessage(
-                            from_uuid=self.peer.uuid,
-                            text=message
-                        )
-                    )
-                    await channel.close()
-                    print(f"   ✅ Sent to {peer_address}")
-                except Exception as e:
-                    print(f"   ❌ Failed to send to {peer_address}: {e}")
-
-        """
-        async def broadcast(self, message):
             for peer_address in self.peer.peers.values():
                 if peer_address == self.peer.address():
                     continue
@@ -148,7 +125,7 @@ class Network:
                             )
                         )
                 await channel.close()
-        """
+
 
         async def run(self):
             await self.start()
@@ -161,7 +138,7 @@ class Network:
                 pass
             finally:
                 chat_task.cancel()
-                await self.server.stop(grace=1)
+            await self.server.stop(grace=1)
 
 
             #chat_task = asyncio.create_task(self.chat_loop())
