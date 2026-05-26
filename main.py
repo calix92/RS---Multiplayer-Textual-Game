@@ -130,9 +130,16 @@ async def main():
 
     if args.bootstrap:
         try:
-            b_ip, b_port = args.bootstrap.split(":")
-            b_id = node_id_from(b_ip, int(b_port))
-            b_node = NodeInfo(b_id, b_ip, int(b_port), "Host")
+            if ":" in args.bootstrap:
+                b_ip, b_port = args.bootstrap.split(":")
+                b_port = int(b_port)
+            else:
+                b_ip = args.bootstrap
+                b_port = 50051 # Porta por defeito
+                terminal.push_event(f"Aviso: Porta não especificada no bootstrap, a usar {b_port}")
+            
+            b_id = node_id_from(b_ip, b_port)
+            b_node = NodeInfo(b_id, b_ip, b_port, "Host")
             
             dht.add_peer(b_node)
             await state.add_peer(b_id, "Host", b_ip, int(b_port))
