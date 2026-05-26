@@ -20,9 +20,9 @@ async def maintenance_loop(player_id, name, ip, port, state, dht, client):
             for peer in dht.all_peers():
                 if peer.node_id != player_id:
                     try:
-                        c = PeerClient(peer.ip, peer.port)
+                        # Reutiliza o cliente do BroadcastClient para aproveitar o Keepalive
+                        c = client._get_client(peer)
                         await c.ping(player_id)
-                        await c.close()
                     except: pass
             await state.clean_inactive_peers(timeout=100)
     except asyncio.CancelledError:
@@ -52,6 +52,13 @@ async def main():
         if cmd in ("quit", "exit"):
             # A limpeza agora é feita no finally do main()
             pass
+        elif cmd == "ping":
+            target = next((p for p in state.peers.values() if p.name.lower() == args_str.lower()), None)
+            if target:
+                terminal.push_event(f"A testar ligação a {target.name} ({target.ip}:{target.port})...")
+                ok = await client._get_client(NodeInfo(target.player_id, target.ip, target.port)).ping(player_id)
+                terminal.push_event(f"Resultado para {target.name}: {'✅ OK' if ok else '❌ FALHA'}")
+            else: terminal.push_event("Jogador não encontrado para ping.")
         elif cmd == "say":
             terminal.push_event(f"[{args.name}] {args_str}")
             await client.broadcast(player_id, args.name, 2, args_str)

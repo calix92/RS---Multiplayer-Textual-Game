@@ -37,7 +37,15 @@ class PeerClient:
 
     async def _get_stub(self):
         if self._channel is None:
-            self._channel = grpc_aio.insecure_channel(self.address)
+            # Opções para manter a ligação viva e detetar falhas de rede rapidamente
+            options = [
+                ('grpc.keepalive_time_ms', 10000),           # Envia ping a cada 10s
+                ('grpc.keepalive_timeout_ms', 5000),         # Espera 5s pelo ping
+                ('grpc.keepalive_permit_without_calls', True), # Permite pings mesmo sem RPCs ativos
+                ('grpc.http2.max_pings_without_data', 0),    # Pings ilimitados
+                ('grpc.connect_timeout_ms', 5000),           # Timeout de ligação inicial
+            ]
+            self._channel = grpc_aio.insecure_channel(self.address, options=options)
             self._stub = game_pb2_grpc.GameServiceStub(self._channel)
         return self._stub
 
@@ -66,11 +74,11 @@ class PeerClient:
                 stub.SendAction(req), timeout=TIMEOUT)
             return resp
         except asyncio.TimeoutError:
-            log.error("Timeout sending to %s", self.address)
+            log.error("❌ TIMEOUT enviando para %s", self.address)
         except grpc.RpcError as e:
-            log.error("gRPC error to %s: %s", self.address, e.details())
+            log.error("❌ Erro gRPC para %s: %s", self.address, e.details() or e.code())
         except Exception as exc:
-            log.error("Error sending to %s: %s", self.address, exc)
+            log.error("❌ Erro inesperado para %s: %s", self.address, exc)
         return None
 
     async def ping(self, sender_id: str) -> bool:
