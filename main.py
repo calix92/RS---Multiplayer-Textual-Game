@@ -11,10 +11,15 @@ import multiplayer_pb2
 import multiplayer_pb2_grpc
 
 
+class PeerPlayer:
+    def __init__(self, address, username):
+        self.address = address
+        self.username = username
+
 class Peer:
         def __init__(self, username, host=None, port=None, bootstrap=None):
-                self.username = username
                 self.uuid = str(uuid.uuid4())
+                self.username = username
                 self.host = host or "127.0.0.1"
                 self.port = port or self._free_port()
                 self.bootstrap = bootstrap
@@ -36,7 +41,7 @@ class PeerDiscovery(multiplayer_pb2_grpc.PeerDiscoveryServicer):
                 self.peer = peer
 
         async def RegisterPeer(self, request, context):
-            self.peer.peers[request.uuid] = request.address
+            self.peer.peers[request.uuid] = PeerPlayer(request.address, request.username)
             print(self.peer.peers)
 
             channel = grpc.aio.insecure_channel(request.address)
@@ -45,10 +50,12 @@ class PeerDiscovery(multiplayer_pb2_grpc.PeerDiscoveryServicer):
             return multiplayer_pb2.Empty()
 
         async def GetPeers(self, request, context):
-                allpeers = dict(self.peer.peers)
-                allpeers[self.peer.uuid] = self.peer.address()
+            allpeers = {}
+            for peer_uuid, peerplayer in dict(self.peer.peers).items():
+                allpeers[peer_uuid] = multiplayer_pb2.PeerInfo(address = peerplayer.address, username = peerplayer.username)
+            allpeers[self.peer.uuid] = multiplayer_pb2.PeerInfo(address = self.peer.address(), username = self.peer.username)
 
-                return multiplayer_pb2.AllPeers(peers=allpeers)
+            return multiplayer_pb2.AllPeers(peers=allpeers)
 
         async def RemovePeer(self, request, context):
             self.peer.peers.pop(request.uuid, None)
@@ -120,29 +127,102 @@ class Network:
                         await self.join()
 
 
+        """
         async def join(self):
                 channel = grpc.aio.insecure_channel(self.peer.bootstrap)
                 stub = multiplayer_pb2_grpc.PeerDiscoveryStub(channel)
 
                 getpeers = await stub.GetPeers(multiplayer_pb2.Empty())
-                self.peer.peers = getpeers.peers
+                for peer_uuid, peerplayer in getpeers.peers.items():
+                    self.peer.peers[peer_uuid] = PeerPlayer(peerplayer.address, peerplayer.username)
+
                 print(self.peer.peers)
 
                 await channel.close()
 
-                for peer_uuid, peer_address in dict(self.peer.peers).items():
+                for peer_uuid, peerplayer in dict(self.peer.peers).items():
 
-                        channel = grpc.aio.insecure_channel(peer_address)
+                        channel = grpc.aio.insecure_channel(peerplayer.address)
                         stub = multiplayer_pb2_grpc.PeerDiscoveryStub(channel)
 
                         self.peer.channels[peer_uuid] = channel
 
                         await stub.RegisterPeer(
                                 multiplayer_pb2.Peer(
-                                        uuid=self.peer.uuid,
-                                        address=self.peer.address()
+                                        uuid = self.peer.uuid,
+                                        address = self.peer.address(),
+                                        username = self.peer.username
                                 )
                         )
+        """
+
+
+        async def join(self):
+            print("\n[DEBUG][JOIN] Starting join process")
+            print(f"[DEBUG][JOIN] Bootstrap: {self.peer.bootstrap}")
+            print(f"[DEBUG][JOIN] My UUID: {self.peer.uuid}")
+            print(f"[DEBUG][JOIN] My address: {self.peer.address()}\n")
+    
+            # 1. conectar ao bootstrap
+            print("[DEBUG][JOIN] Connecting to bootstrap node...")
+    
+            channel = grpc.aio.insecure_channel(self.peer.bootstrap)
+            stub = multiplayer_pb2_grpc.PeerDiscoveryStub(channel)
+    
+            print("[DEBUG][JOIN] Requesting peer list from bootstrap...")
+            getpeers = await stub.GetPeers(multiplayer_pb2.Empty())
+    
+            print(f"[DEBUG][JOIN] Received {len(getpeers.peers)} peers from bootstrap")
+    
+            # 2. processar peers recebidos
+            for peer_uuid, peerplayer in getpeers.peers.items():
+                print(f"\n[DEBUG][JOIN] Processing peer: {peer_uuid}")
+                print(f"[DEBUG][JOIN] Address: {peerplayer.address}")
+                print(f"[DEBUG][JOIN] Username: {peerplayer.username}")
+    
+                self.peer.peers[peer_uuid] = PeerPlayer(
+                    peerplayer.address,
+                    peerplayer.username
+                )
+        
+            print("\n[DEBUG][JOIN] Local peer list updated:")
+            for k, v in self.peer.peers.items():
+                print(f"    - {k} -> {v.username} @ {v.address}")
+        
+            await channel.close()
+            print("\n[DEBUG][JOIN] Bootstrap channel closed\n")
+    
+            # 3. registar este peer nos outros peers
+            print("[DEBUG][JOIN] Registering self in other peers...\n")
+    
+            for peer_uuid, peerplayer in dict(self.peer.peers).items():
+        
+                print(f"[DEBUG][JOIN] ---- Connecting to peer {peer_uuid} ----")
+                print(f"[DEBUG][JOIN] Target address: {peerplayer.address}")
+    
+                try:
+                    channel = grpc.aio.insecure_channel(peerplayer.address)
+                    stub = multiplayer_pb2_grpc.PeerDiscoveryStub(channel)
+    
+                    self.peer.channels[peer_uuid] = channel
+    
+                    print(f"[DEBUG][JOIN] Sending RegisterPeer to {peer_uuid}")
+    
+                    await stub.RegisterPeer(
+                        multiplayer_pb2.Peer(
+                            uuid=self.peer.uuid,
+                            address=self.peer.address(),
+                            username=self.peer.username
+                        )
+                    )
+    
+                    print(f"[DEBUG][JOIN] Successfully registered with {peer_uuid}")
+    
+                except Exception as e:
+                    print(f"[ERROR][JOIN] Failed with {peer_uuid}: {type(e).__name__}: {e}")
+
+            print("\n[DEBUG][JOIN] Join process completed\n")
+
 
 
         async def chat_loop(self):
@@ -177,9 +257,9 @@ class Network:
 
 
         async def stop(self):
-                for peer_address in list(self.peer.peers.values()):
+                for peerplayer in list(self.peer.peers.values()):
 
-                        channel = grpc.aio.insecure_channel(peer_address)
+                        channel = grpc.aio.insecure_channel(peerplayer.address)
                         stub = multiplayer_pb2_grpc.PeerDiscoveryStub(channel)
                         
 

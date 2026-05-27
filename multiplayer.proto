@@ -11,10 +11,16 @@ service PeerDiscovery {
 message Peer {
   string uuid = 1;
   string address = 2;
+  string username = 3;
 }
 
 message AllPeers {
-    map<string, string> peers = 1;
+    map<string, PeerInfo> peers = 1;
+}
+
+message PeerInfo {
+  string address = 1;
+  string username = 2;
 }
 
 service Chat {
