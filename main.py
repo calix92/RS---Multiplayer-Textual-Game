@@ -126,13 +126,13 @@ class GameController:
         self.peer.refresh_chat = asyncio.Event()
         self.peer.messages = []
 
-        self.height = 20
-        self.width = 20
+        self.height = 40
+        self.width = 40
 
 
         self.game_display = TextArea(
-                focusable=False, 
-                height=20
+                focusable = False, 
+                height = self.height + 2
                 )
         self.chat_display = TextArea(
                 focusable = False,
@@ -247,14 +247,17 @@ class GameController:
 
         for peerplayer in list(self.peer.peers.values()):
             symbol = symbols[peerplayer.direction]
-
             grid[peerplayer.y][peerplayer.x] = symbol
 
         symbol = symbols[self.peer.direction]
-
         grid[self.peer.y][self.peer.x] = symbol
 
-        self.game_display.text = "\n".join("".join(row) for row in grid)
+        top = "+" + "-" * self.width + "+"
+        middle = ["|" + "".join(row) + "|" for row in grid]
+        bottom = top
+
+        final = [top] + middle + [bottom]
+        self.game_display.text = "\n".join(final)
 
 
     def render_chat(self):
