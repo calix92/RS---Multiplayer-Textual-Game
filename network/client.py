@@ -177,6 +177,12 @@ class BroadcastClient:
             action_type=4,   # JOIN
             payload=f"{ip}:{port}")
 
+    async def announce_status(self, sender_id: str, sender_name: str, hp: int, status: str, position: str):
+        """Envia o nosso estado atual (HP, posição, etc) para todos."""
+        # Usamos o action_type 6 para STATUS
+        payload = f"{hp}:{status}:{position}"
+        await self.broadcast(sender_id, sender_name, action_type=6, payload=payload)
+
     async def announce_leave(self, sender_id: str, sender_name: str):
         await self.broadcast(sender_id, sender_name, action_type=5, payload="")
 
