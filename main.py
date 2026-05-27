@@ -216,7 +216,7 @@ class GameController:
         
         self.peer.refresh.set()
 
-        asyncio.create_task(self.send_position())
+        asyncio.create_task(self.network.position())
     
 
     def send_message(self):
@@ -230,20 +230,6 @@ class GameController:
         self.peer.refresh_chat.set()
 
         asyncio.create_task(self.network.broadcast(msg))
-
-
-    async def send_position(self):
-        for channel in list(self.peer.channels.values()):
-
-            stub = multiplayer_pb2_grpc.GameStub(channel)
-
-            await stub.SetPosition(
-                multiplayer_pb2.Position(
-                    uuid=self.peer.uuid,
-                    x=self.peer.x,
-                    y=self.peer.y
-                    )
-                )
 
 
 class Network:
@@ -349,31 +335,41 @@ class Network:
                 stub = multiplayer_pb2_grpc.ChatStub(channel)
 
                 await stub.Broadcast(
-                        multiplayer_pb2.BroadcastMessage(
-                            username = self.peer.username,
-                            text = message
-                            )
+                    multiplayer_pb2.BroadcastMessage(
+                        username = self.peer.username,
+                        text = message
                         )
+                    )
+
+        async def position(self):
+            for channel in list(self.peer.channels.values()):
+                stub = multiplayer_pb2_grpc.GameStub(channel)
+
+                await stub.SetPosition(
+                    multiplayer_pb2.Position(
+                        uuid=self.peer.uuid,
+                        x=self.peer.x,
+                        y=self.peer.y
+                        )
+                    )
 
 
         async def stop(self):
-                for peerplayer in list(self.peer.peers.values()):
-
-                        channel = grpc.aio.insecure_channel(peerplayer.address)
-                        stub = multiplayer_pb2_grpc.PeerDiscoveryStub(channel)
+            for channel in list(self.peer.channels.values()):
+                stub = multiplayer_pb2_grpc.PeerDiscoveryStub(channel)
                         
 
-                        await stub.RemovePeer(
-                                multiplayer_pb2.Peer(
-                                        uuid=self.peer.uuid,
-                                        address=self.peer.address()
-                                )
-                        )
+                await stub.RemovePeer(
+                    multiplayer_pb2.Peer(
+                        uuid=self.peer.uuid,
+                        address=self.peer.address()
+                    )
+                )
 
-                        await channel.close()
+                await channel.close()
 
-                for channel in self.peer.channels.values():
-                            await channel.close()
+            for channel in self.peer.channels.values():
+                await channel.close()
 
 def main():
         parser = argparse.ArgumentParser()
