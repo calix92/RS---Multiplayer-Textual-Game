@@ -37,6 +37,7 @@ class Peer:
                 self.y = random.randint(0, 19)
                 self.direction = "none"
                 self.peers = {}
+                self.announcements = []
 
 
         def address(self):
@@ -56,7 +57,8 @@ class PeerDiscovery(multiplayer_pb2_grpc.PeerDiscoveryServicer):
 
         async def RegisterPeer(self, request, context):
             self.peer.peers[request.uuid] = PeerPlayer(request.address, request.username, request.x, request.y, request.direction)
-            print(self.peer.peers)
+            self.peer.announcements.append(f"A new warrior arrived. His name is {request.username}")
+            self.peer.refresh_news.set()
 
             channel = grpc.aio.insecure_channel(request.address)
             self.peer.channels[request.uuid] = channel
@@ -89,7 +91,8 @@ class PeerDiscovery(multiplayer_pb2_grpc.PeerDiscoveryServicer):
             await channel.close()
             self.peer.channels.pop(request.uuid)
             self.peer.peers.pop(request.uuid)
-            print(self.peer.peers)
+            self.peer.announcements.append(f"The brave warrior {request.username} has withdrawn")
+            self.peer.refresh_news.set()
 
             self.peer.refresh_game.set()
             return multiplayer_pb2.Empty()
@@ -126,7 +129,8 @@ class GameController:
         self.peer.refresh_game.set()
         self.peer.refresh_chat = asyncio.Event()
         self.peer.messages = []
-        self.peer.announcements = []
+        self.peer.refresh_news = asyncio.Event()
+        self.peer.refresh_news.set()
 
         self.height = 40
         self.width = 40
@@ -194,6 +198,7 @@ class GameController:
 
         asyncio.create_task(self.loop_game())
         asyncio.create_task(self.loop_chat())
+        asyncio.create_task(self.loop_news())
 
     
     def label(self, message):
@@ -251,6 +256,11 @@ class GameController:
             self.render_chat()
             self.peer.refresh_chat.clear()
 
+    async def loop_news(self):
+        while True:
+            await self.peer.refresh_news.wait()
+            self.render_news()
+            self.peer.refresh_news.clear()
 
     def render_game(self):
         grid = [["." for _ in range(self.width)] for _ in range(self.height)]
@@ -281,6 +291,10 @@ class GameController:
     def render_chat(self):
         self.peer.messages = self.peer.messages[-4:]
         self.chat_display.text = "\n".join(self.peer.messages)
+
+    def render_news(self):
+        self.peer.announcements = self.peer.announcements[-8:]
+        self.news_display.text = "\n".join(self.peer.announcements)
 
 
 class Network:
@@ -339,11 +353,11 @@ class Network:
 
                 await self.server.start()
 
-                print(self.peer.uuid)
-                print(self.peer.address())
-
                 if self.peer.bootstrap:
-                        await self.join()
+                    self.peer.announcements.append(f"You entered in a new battle. Good Luck.")
+                    await self.join()
+                else:
+                    self.peer.announcements.append(f"You entered in a new arena. Good Luck.")
 
 
         async def join(self):
@@ -359,8 +373,7 @@ class Network:
                             peerplayer.y,
                             peerplayer.direction
                             )
-
-                print(self.peer.peers)
+                    self.peer.announcements.append(f"You are fighting against {peerplayer.username}")
 
                 await channel.close()
 
@@ -416,7 +429,8 @@ class Network:
                 await stub.RemovePeer(
                     multiplayer_pb2.Peer(
                         uuid=self.peer.uuid,
-                        address=self.peer.address()
+                        address=self.peer.address(),
+                        username = self.peer.username
                     )
                 )
 
@@ -448,7 +462,7 @@ def main():
                 asyncio.run(network.run())
         except KeyboardInterrupt:
                 print("")
-                print("Server stopped by user")
+                print("The brave warrior withdrew from battle")
 
 
 if __name__ == "__main__":
