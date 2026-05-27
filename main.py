@@ -97,14 +97,13 @@ class Game(multiplayer_pb2_grpc.GameServicer):
         peerplayer = self.peer.peers[request.uuid]
         peerplayer.x = request.x
         peerplayer.y = request.y
+        self.peer.needs_refresh = True
         return multiplayer_pb2.Empty()
 
 class GameController:
     def __init__(self, peer):
         self.peer = peer
-
-        self.x = self.peer.x
-        self.y = self.peer.y
+        self.peer.needs_refresh = True
 
         self.height = 20
         self.width = 20
@@ -135,11 +134,18 @@ class GameController:
             layout=Layout(HSplit([self.game, self.info])),
             key_bindings=self.kb,
             full_screen=True,
-            refresh_interval=0.5,
         )
 
-        self.render()
+        asyncio.create_task(self.loop())
 
+    async def loop(self):
+        while True:
+            if self.peer.needs_refresh:
+                self.render()
+                self.peer.needs_refresh = False
+
+            await asyncio.sleep(0.03)
+        
     def render(self):
         grid = [["." for number in range(self.width)] for number in range(self.height)]
         for peerplayer in list(self.peer.peers.values()):
