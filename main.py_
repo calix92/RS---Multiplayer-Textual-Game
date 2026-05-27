@@ -45,10 +45,7 @@ class PeerDiscovery(multiplayer_pb2_grpc.PeerDiscoveryServicer):
             return multiplayer_pb2.Empty()
 
         async def GetPeers(self, request, context):
-                allpeers = dict(self.peer.peers)
-                allpeers[self.peer.uuid] = self.peer.address()
-
-                return multiplayer_pb2.AllPeers(peers=allpeers)
+                return multiplayer_pb2.AllPeers(peers=self.peer.peers)
 
         async def RemovePeer(self, request, context):
             self.peer.peers.pop(request.uuid, None)
@@ -113,8 +110,8 @@ class Network:
 
                 await self.server.start()
 
-                print(self.peer.uuid)
-                print(self.peer.address())
+                self.peer.peers[self.peer.uuid] = self.peer.address()
+                print(self.peer.peers)
 
                 if self.peer.bootstrap:
                         await self.join()
@@ -125,12 +122,14 @@ class Network:
                 stub = multiplayer_pb2_grpc.PeerDiscoveryStub(channel)
 
                 getpeers = await stub.GetPeers(multiplayer_pb2.Empty())
-                self.peer.peers = getpeers.peers
+                self.peer.peers.update(getpeers.peers)
                 print(self.peer.peers)
 
                 await channel.close()
 
                 for peer_uuid, peer_address in dict(self.peer.peers).items():
+                        if peer_address == self.peer.address():
+                                continue
 
                         channel = grpc.aio.insecure_channel(peer_address)
                         stub = multiplayer_pb2_grpc.PeerDiscoveryStub(channel)
@@ -156,6 +155,9 @@ class Network:
             for peer_uuid in list(self.peer.peers.keys()):
                 stub = self.get_stubs_chat(peer_uuid)
 
+                if stub is None:
+                    continue
+
                 await stub.Broadcast(
                         multiplayer_pb2.BroadcastMessage(
                             from_uuid = self.peer.uuid,
@@ -168,6 +170,8 @@ class Network:
                 stub = self.peer.stubs_chat.get(peer_uuid, None)
                 if not stub:
                     channel = self.peer.channels.get(peer_uuid, None)
+                    if not channel:
+                        return None
                     stub = multiplayer_pb2_grpc.ChatStub(channel)
                     self.peer.stubs_chat[peer_uuid] = stub
 
@@ -178,6 +182,8 @@ class Network:
 
         async def stop(self):
                 for peer_address in list(self.peer.peers.values()):
+                        if peer_address == self.peer.address():
+                                continue
 
                         channel = grpc.aio.insecure_channel(peer_address)
                         stub = multiplayer_pb2_grpc.PeerDiscoveryStub(channel)
