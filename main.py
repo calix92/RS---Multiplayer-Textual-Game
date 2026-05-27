@@ -58,7 +58,7 @@ class PeerDiscovery(multiplayer_pb2_grpc.PeerDiscoveryServicer):
             channel = grpc.aio.insecure_channel(request.address)
             self.peer.channels[request.uuid] = channel
 
-            self.peer.refresh.set()
+            self.peer.refresh_game.set()
             return multiplayer_pb2.Empty()
 
         async def GetPeers(self, request, context):
@@ -83,7 +83,7 @@ class PeerDiscovery(multiplayer_pb2_grpc.PeerDiscoveryServicer):
             self.peer.peers.pop(request.uuid, None)
             print(self.peer.peers)
 
-            self.peer.refresh.set()
+            self.peer.refresh_game.set()
             return multiplayer_pb2.Empty()
 
 
@@ -106,15 +106,15 @@ class Game(multiplayer_pb2_grpc.GameServicer):
         peerplayer = self.peer.peers[request.uuid]
         peerplayer.x = request.x
         peerplayer.y = request.y
-        self.peer.refresh.set()
+        self.peer.refresh_game.set()
         return multiplayer_pb2.Empty()
 
 class GameController:
     def __init__(self, network):
         self.network = network
         self.peer = self.network.peer
-        self.peer.refresh = asyncio.Event()
-        self.peer.refresh.set()
+        self.peer.refresh_game = asyncio.Event()
+        self.peer.refresh_game.set()
         self.peer.refresh_chat = asyncio.Event()
         self.peer.messages = []
 
@@ -140,19 +140,19 @@ class GameController:
         self.kb = KeyBindings()
 
         @self.kb.add("up")
-        def _(event): self.handle("up")
+        def _(event): self.action_position("up")
 
         @self.kb.add("down")
-        def _(event): self.handle("down")
+        def _(event): self.action_position("down")
 
         @self.kb.add("left")
-        def _(event): self.handle("left")
+        def _(event): self.action_position("left")
 
         @self.kb.add("right")
-        def _(event): self.handle("right")
+        def _(event): self.action_position("right")
 
         @self.kb.add("enter")
-        def _(event): self.send_message()
+        def _(event): self.action_chat()
 
         @self.kb.add("c-c")
         def _(event):
@@ -171,37 +171,11 @@ class GameController:
             full_screen=True
             )
 
-        asyncio.create_task(self.loop())
+        asyncio.create_task(self.loop_game())
         asyncio.create_task(self.loop_chat())
 
-    async def loop(self):
-        while True:
-            await self.peer.refresh.wait()
-            self.render()
-            self.peer.refresh.clear()
-        
-    async def loop_chat(self):
-        while True:
-            await self.peer.refresh_chat.wait()
-            self.render_chat()
-            self.peer.refresh_chat.clear()
 
-    def render(self):
-        grid = [["." for number in range(self.width)] for number in range(self.height)]
-        for peerplayer in list(self.peer.peers.values()):
-            grid[peerplayer.y][peerplayer.x] = "@"
-        grid[self.peer.y][self.peer.x] = "@"
-
-        rendered = "\n".join("".join(row) for row in grid)
-        self.game_display.text = rendered
-
-
-    def render_chat(self):
-        self.peer.messages = self.peer.messages[-4:]
-        self.chat_display.text = "\n".join(self.peer.messages)
-
-
-    def handle(self, direction):
+    def action_position(self, direction):
         movement = {
             "up": (0, -1),
             "down": (0, 1),
@@ -214,12 +188,12 @@ class GameController:
         self.peer.x = max(0, min(self.width - 1, self.peer.x + dx))
         self.peer.y = max(0, min(self.height - 1, self.peer.y + dy))
         
-        self.peer.refresh.set()
+        self.peer.refresh_game.set()
 
         asyncio.create_task(self.network.position())
-    
 
-    def send_message(self):
+
+    def action_chat(self):
         msg = self.input_field.text.strip()
         if not msg:
             return
@@ -230,6 +204,33 @@ class GameController:
         self.peer.refresh_chat.set()
 
         asyncio.create_task(self.network.broadcast(msg))
+
+
+    async def loop_game(self):
+        while True:
+            await self.peer.refresh_game.wait()
+            self.render_game()
+            self.peer.refresh_game.clear()
+        
+    async def loop_chat(self):
+        while True:
+            await self.peer.refresh_chat.wait()
+            self.render_chat()
+            self.peer.refresh_chat.clear()
+
+    def render_game(self):
+        grid = [["." for number in range(self.width)] for number in range(self.height)]
+        for peerplayer in list(self.peer.peers.values()):
+            grid[peerplayer.y][peerplayer.x] = "@"
+        grid[self.peer.y][self.peer.x] = "@"
+
+        rendered = "\n".join("".join(row) for row in grid)
+        self.game_display.text = rendered
+
+
+    def render_chat(self):
+        self.peer.messages = self.peer.messages[-4:]
+        self.chat_display.text = "\n".join(self.peer.messages)
 
 
 class Network:
