@@ -4,6 +4,7 @@ from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.application import Application
 from prompt_toolkit.layout import Layout, HSplit
 from prompt_toolkit.widgets import TextArea
+from prompt_toolkit.widgets import Label
 from prompt_toolkit import PromptSession
 import argparse
 import asyncio
@@ -125,11 +126,16 @@ class GameController:
         self.peer.refresh_game.set()
         self.peer.refresh_chat = asyncio.Event()
         self.peer.messages = []
+        self.peer.announcements = []
 
         self.height = 40
         self.width = 40
 
 
+        self.news_display = TextArea(
+                focusable = False,
+                height = 8
+                )
         self.game_display = TextArea(
                 focusable = False, 
                 height = self.height + 2
@@ -144,6 +150,7 @@ class GameController:
                 multiline = False,
                 height = 1
                 )
+        
 
         self.kb = KeyBindings()
 
@@ -170,7 +177,13 @@ class GameController:
         self.app = Application(
             layout=Layout(
                 HSplit([
+                    self.label(" Announcements "),
+                    self.news_display,
+                    Label(""),
+                    self.label(" Multiplayer "),
                     self.game_display,
+                    Label(""),
+                    self.label(" Messages "),
                     self.chat_display,
                     self.input_field
                 ])
@@ -182,6 +195,11 @@ class GameController:
         asyncio.create_task(self.loop_game())
         asyncio.create_task(self.loop_chat())
 
+    
+    def label(self, message):
+        size_message = len(message)
+        size_borders = int((self.width + 2 - size_message)/2)
+        return Label("=" * size_borders + message + "=" * size_borders)
 
     def action_position(self, direction):
         movement = {
