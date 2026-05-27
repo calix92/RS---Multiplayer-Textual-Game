@@ -250,7 +250,6 @@ class Network:
         def __init__(self, peer):
                 self.peer = peer
                 self.server = None
-                self.session = PromptSession()
 
                 self.peer.channels = {}
                 self.peer.stubs_chat = {}
@@ -259,21 +258,18 @@ class Network:
         async def run(self):
             await self.start()
 
-            chat_task = asyncio.create_task(self.chat_loop())
-
             game = GameController(self)
 
-            asyncio.create_task(game.app.run_async())
+            try:
+                with patch_stdout():
+                    await game.app.run_async()
 
-            with patch_stdout():
-                try:
-                    await self.server.wait_for_termination()
-                except KeyboardInterrupt:
-                    pass
-                finally:
-                    chat_task.cancel()
-                    await self.stop()
-                    await self.server.stop(grace=1)
+            except KeyboardInterrupt:
+                pass
+
+            finally:
+                await self.stop()
+                await self.server.stop(grace=1)
 
 
         async def start(self):
@@ -348,16 +344,9 @@ class Network:
                         )
 
 
-        async def chat_loop(self):
-            while True:
-                message = await self.session.prompt_async("> ")
-
-                await self.broadcast(message)
-
-        
         async def broadcast(self, message):
-            for peer_uuid in list(self.peer.peers.keys()):
-                stub = self.get_stubs_chat(peer_uuid)
+            for channel in list(self.peer.channels.values()):
+                stub = multiplayer_pb2_grpc.ChatStub(channel)
 
                 await stub.Broadcast(
                         multiplayer_pb2.BroadcastMessage(
@@ -365,18 +354,6 @@ class Network:
                             text = message
                             )
                         )
-
-        def get_stubs_chat(self, peer_uuid):
-            try:
-                stub = self.peer.stubs_chat.get(peer_uuid, None)
-                if not stub:
-                    channel = self.peer.channels.get(peer_uuid, None)
-                    stub = multiplayer_pb2_grpc.ChatStub(channel)
-                    self.peer.stubs_chat[peer_uuid] = stub
-
-                return stub
-            except Exception as e:
-                print(e)
 
 
         async def stop(self):
