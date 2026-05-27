@@ -4,6 +4,11 @@ import logging
 import socket
 import sys
 import os
+from game.state import GameState
+from dht.kademlia import DHTNode, NodeInfo, node_id_from
+from network.server import start_server
+from network.client import BroadcastClient, PeerClient
+from utils.terminal import Terminal
 
 # Silenciar logs técnicos do gRPC e C++
 os.environ['GRPC_VERBOSITY'] = 'NONE'
