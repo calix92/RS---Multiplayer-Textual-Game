@@ -1,214 +1,94 @@
-"""
-network/client.py
-~~~~~~~~~~~~~~~~~
-gRPC client helpers.
-`PeerClient` wraps a channel to a single peer and provides typed async methods.
-`BroadcastClient` fans out a call to all known peers concurrently.
-"""
-
-import asyncio
-import logging
-import time
-from contextlib import asynccontextmanager
-
-import grpc
+import asyncio, logging, time, grpc
 from grpc import aio as grpc_aio
-
 try:
     from proto import game_pb2, game_pb2_grpc
-except ImportError:
-    game_pb2 = None
-    game_pb2_grpc = None
-
-from dht.kademlia import DHTNode, NodeInfo
+except:
+    game_pb2, game_pb2_grpc = None, None
+from dht.kademlia import NodeInfo
 
 log = logging.getLogger("network.client")
-
-TIMEOUT = 5.0   # seconds per RPC call
-
+TIMEOUT = 5.0
 
 class PeerClient:
-    """Async gRPC client for one peer."""
-
     def __init__(self, ip: str, port: int):
-        self.address = f"{ip}:{port}"
-        self._channel: grpc_aio.Channel | None = None
-        self._stub = None
+        self.addr, self._chan, self._stub = f"{ip}:{port}", None, None
 
     async def _get_stub(self):
-        if self._channel is None:
-            # Opções para manter a ligação viva e detetar falhas de rede rapidamente
-            options = [
-                ('grpc.keepalive_time_ms', 10000),           # Envia ping a cada 10s
-                ('grpc.keepalive_timeout_ms', 5000),         # Espera 5s pelo ping
-                ('grpc.keepalive_permit_without_calls', True), # Permite pings mesmo sem RPCs ativos
-                ('grpc.http2.max_pings_without_data', 0),    # Pings ilimitados
-                ('grpc.connect_timeout_ms', 5000),           # Timeout de ligação inicial
-            ]
-            self._channel = grpc_aio.insecure_channel(self.address, options=options)
-            self._stub = game_pb2_grpc.GameServiceStub(self._channel)
+        if not self._chan:
+            opts = [('grpc.keepalive_time_ms', 10000), ('grpc.keepalive_timeout_ms', 5000)]
+            self._chan = grpc_aio.insecure_channel(self.addr, options=opts)
+            self._stub = game_pb2_grpc.GameServiceStub(self._chan)
         return self._stub
 
     async def close(self):
-        if self._channel:
-            await self._channel.close()
-            self._channel = None
+        if self._chan: await self._chan.close()
+        self._chan = None
 
-    # ── Actions ───────────────────────────────────────────────────────────
-
-    async def send_action(self,
-                          sender_id: str,
-                          sender_name: str,
-                          action_type: int,
-                          payload: str) -> "game_pb2.ActionResponse | None":
+    async def send_action(self, sid, sname, atype, pay):
         try:
             stub = await self._get_stub()
-            req = game_pb2.ActionRequest(
-                sender_id=sender_id,
-                sender_name=sender_name,
-                action=action_type,
-                payload=payload,
-                timestamp=int(time.time() * 1000),
-            )
-            resp = await asyncio.wait_for(
-                stub.SendAction(req), timeout=TIMEOUT)
-            return resp
-        except asyncio.TimeoutError:
-            log.error("❌ TIMEOUT enviando para %s", self.address)
-        except grpc.RpcError as e:
-            log.error("❌ Erro gRPC para %s: %s", self.address, e.details() or e.code())
-        except Exception as exc:
-            log.error("❌ Erro inesperado para %s: %s", self.address, exc)
+            req = game_pb2.ActionRequest(sender_id=sid, sender_name=sname, action=atype, payload=pay, timestamp=int(time.time()*1000))
+            return await asyncio.wait_for(stub.SendAction(req), timeout=TIMEOUT)
+        except Exception as e: log.debug(f"Action failed for {self.addr}: {e}")
         return None
 
-    async def ping(self, sender_id: str) -> bool:
+    async def ping(self, sid):
         try:
             stub = await self._get_stub()
-            resp = await asyncio.wait_for(
-                stub.Ping(game_pb2.PingRequest(sender_id=sender_id)),
-                timeout=TIMEOUT)
-            return resp.alive
-        except Exception:
-            return False
+            res = await asyncio.wait_for(stub.Ping(game_pb2.PingRequest(sender_id=sid)), timeout=TIMEOUT)
+            return res.alive
+        except: return False
 
-    async def find_node(self, target_id: str,
-                        requester_id: str) -> list[NodeInfo]:
+    async def find_node(self, target, rid):
         try:
             stub = await self._get_stub()
-            resp = await asyncio.wait_for(
-                stub.FindNode(game_pb2.FindNodeRequest(
-                    target_id=target_id,
-                    requester_id=requester_id,
-                )),
-                timeout=TIMEOUT)
-            return [NodeInfo(n.node_id, n.ip, n.port, n.name)
-                    for n in resp.closest_nodes]
-        except Exception as exc:
-            log.debug("find_node failed for %s: %s", self.address, exc)
-            return []
+            res = await asyncio.wait_for(stub.FindNode(game_pb2.FindNodeRequest(target_id=target, requester_id=rid)), timeout=TIMEOUT)
+            return [NodeInfo(n.node_id, n.ip, n.port, n.name) for n in res.closest_nodes]
+        except: return []
 
-    async def store_node(self, info: NodeInfo) -> bool:
+    async def store_node(self, info: NodeInfo):
         try:
             stub = await self._get_stub()
-            resp = await asyncio.wait_for(
-                stub.StoreNode(game_pb2.StoreNodeRequest(
-                    node=game_pb2.NodeInfo(
-                        node_id=info.node_id,
-                        ip=info.ip,
-                        port=info.port,
-                        name=info.name,
-                    )
-                )),
-                timeout=TIMEOUT)
-            return resp.success
-        except Exception:
-            return False
-
-
-# ─── Broadcast helpers ────────────────────────────────────────────────────────
+            node = game_pb2.NodeInfo(node_id=info.node_id, ip=info.ip, port=info.port, name=info.name)
+            res = await asyncio.wait_for(stub.StoreNode(game_pb2.StoreNodeRequest(node=node)), timeout=TIMEOUT)
+            return res.success
+        except: return False
 
 class BroadcastClient:
-    """Fan-out sender: sends an action to ALL known peers concurrently."""
-
-    def __init__(self, dht: DHTNode):
-        self.dht = dht
-        self._clients: dict[str, PeerClient] = {}
+    def __init__(self, dht):
+        self.dht, self._clients = dht, {}
 
     def _get_client(self, info: NodeInfo) -> PeerClient:
-        if info.node_id not in self._clients:
-            self._clients[info.node_id] = PeerClient(info.ip, info.port)
+        if info.node_id not in self._clients: self._clients[info.node_id] = PeerClient(info.ip, info.port)
         return self._clients[info.node_id]
 
-    async def broadcast(self,
-                         sender_id: str,
-                         sender_name: str,
-                         action_type: int,
-                         payload: str) -> list:
-        """Send to all peers; returns list of responses (None = failed)."""
+    async def broadcast(self, sid, sname, atype, pay):
         peers = self.dht.all_peers()
-        if not peers:
-            log.debug("No peers to broadcast to.")
-            return []
+        if not peers: return []
+        tasks = [self._get_client(p).send_action(sid, sname, atype, pay) for p in peers]
+        return await asyncio.gather(*tasks, return_exceptions=True)
 
-        tasks = [
-            self._get_client(p).send_action(
-                sender_id, sender_name, action_type, payload)
-            for p in peers
-        ]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        return results
+    async def send_to(self, target: NodeInfo, sid, sname, atype, pay):
+        return await self._get_client(target).send_action(sid, sname, atype, pay)
 
-    async def send_to(self,
-                       target: NodeInfo,
-                       sender_id: str,
-                       sender_name: str,
-                       action_type: int,
-                       payload: str):
-        """Send to a single peer by NodeInfo."""
-        client = self._get_client(target)
-        return await client.send_action(
-            sender_id, sender_name, action_type, payload)
+    async def announce_join(self, sid, sname, ip, port):
+        await self.broadcast(sid, sname, 4, f"{ip}:{port}")
 
-    async def announce_join(self, sender_id: str, sender_name: str,
-                             ip: str, port: int):
-        """Announce ourselves to all known peers."""
-        await self.broadcast(
-            sender_id, sender_name,
-            action_type=4,   # JOIN
-            payload=f"{ip}:{port}")
+    async def announce_status(self, sid, sname, hp, status, pos):
+        await self.broadcast(sid, sname, 6, f"{hp}:{status}:{pos}")
 
-    async def announce_status(self, sender_id: str, sender_name: str, hp: int, status: str, position: str):
-        """Envia o nosso estado atual (HP, posição, etc) para todos."""
-        # Usamos o action_type 6 para STATUS
-        payload = f"{hp}:{status}:{position}"
-        await self.broadcast(sender_id, sender_name, action_type=6, payload=payload)
-
-    async def announce_leave(self, sender_id: str, sender_name: str):
-        await self.broadcast(sender_id, sender_name, action_type=5, payload="")
+    async def announce_leave(self, sid, sname):
+        await self.broadcast(sid, sname, 5, "")
 
     async def close_all(self):
-        for c in self._clients.values():
-            await c.close()
+        for c in self._clients.values(): await c.close()
         self._clients.clear()
 
-    async def sync_with_host(self, host_node_info):
-        """
-        Liga-se ao nó de bootstrap e saca o estado atual do jogo.
-        """
+    async def sync_with_host(self, host: NodeInfo):
         try:
-            # host_node_info deve ter o IP e Porta do gajo ao qual nos estamos a ligar
-            channel = grpc.aio.insecure_channel(f"{host_node_info.ip}:{host_node_info.port}")
-            stub = game_pb2_grpc.GameServiceStub(channel)
-            
-            # Pede o mundo
-            request = game_pb2.SyncRequest(reader_id=self.dht.node_id)
-
-
-
-            response = await stub.SyncWorld(request)
-            
-            await channel.close()
-            return response.world_data_json # Retorna o JSON
-        except Exception as e:
-            print(f"Erro na sincronização: {e}")
-            return None
+            chan = grpc.aio.insecure_channel(f"{host.ip}:{host.port}")
+            stub = game_pb2_grpc.GameServiceStub(chan)
+            res = await stub.SyncWorld(game_pb2.SyncRequest(reader_id=self.dht.node_id))
+            await chan.close()
+            return res.world_data_json
+        except: return None
