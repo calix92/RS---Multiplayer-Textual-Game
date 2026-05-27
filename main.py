@@ -118,9 +118,10 @@ async def main():
             terminal.push_event(f"[{args.name}] {args_str}")
             await client.broadcast(player_id, args.name, 2, args_str)
         elif cmd == "move":
-            res = await state.self_move(args_str)
-            terminal.push_event(res)
-            await client.broadcast(player_id, args.name, 1, args_str)
+            ok, msg = await state.self_move(args_str)
+            terminal.push_event(msg)
+            if ok:
+                await client.broadcast(player_id, args.name, 1, args_str)
         elif cmd == "attack":
             target_name = args_str.split()[0] if args_str else ""
             weapon = args_str.split()[1] if len(args_str.split()) > 1 else "sword"
@@ -136,11 +137,18 @@ async def main():
         elif cmd == "heal":
             target = next((p for p in state.peers.values() if p.name.lower() == args_str.lower()), None)
             if target:
-                await client.send_to(NodeInfo(target.player_id, target.ip, target.port, target.name), player_id, args.name, 3, "15")
-                terminal.push_event(f"Curaste {target.name}!")
+                ok, err = await state.self_heal(target.player_id)
+                if ok:
+                    await client.send_to(NodeInfo(target.player_id, target.ip, target.port, target.name), player_id, args.name, 3, "15")
+                    terminal.push_event(f"Curaste {target.name}!")
+                    await client.broadcast(player_id, args.name, 2, f"Curou {target.name}!")
+                else: terminal.push_event(f"Erro: {err}")
+            else: terminal.push_event("Jogador não encontrado para curar.")
         elif cmd == "respawn":
-            await state.self_respawn()
-            await client.announce_join(player_id, args.name, args.ip, args.port)
+            ok, msg = await state.self_respawn()
+            terminal.push_event(msg)
+            if ok:
+                await client.announce_join(player_id, args.name, args.ip, args.port)
         elif cmd == "find":
             if not args_str:
                 terminal.push_event("Uso: find <player_id>")

@@ -153,10 +153,16 @@ class GameState:
     async def process_attack(self, sender_id: str, sender_name: str, weapon: str) -> tuple[int, str]:
         """Verificação no lado de quem recebe o ataque (Servidor)"""
         async with self._lock:
-            # Tentar encontrar o atacante na nossa lista de conhecidos
+            # 1. Eu já estou morto?
+            if not self.self_player.is_alive():
+                return 0, f"{self.self_player.name} já está morto e ignora o ataque."
+
+            # 2. O atacante é conhecido e está morto?
             attacker = self.peers.get(sender_id)
-            
-            # Validação de segurança: Se soubermos onde o atacante está, validamos a posição
+            if attacker and not attacker.is_alive():
+                return 0, f"Ataque ignorado: {sender_name} está morto e fantasmas não batem."
+
+            # 3. Validação de posição
             if attacker and attacker.position != self.self_player.position:
                 self._log(sender_name, "ATTACK_BLOCKED", self.self_player.name, "Tentativa de ataque à distância")
                 return 0, f"Ataque de {sender_name} ignorado: Fora de alcance."
@@ -171,10 +177,15 @@ class GameState:
                            amount: int) -> tuple[int, str]:
         """Someone healed us."""
         async with self._lock:
+            # O curandeiro está morto?
+            healer = self.peers.get(sender_id)
+            if healer and not healer.is_alive():
+                return 0, f"Cura falhou: {sender_name} é um fantasma."
+
             result = self.self_player.heal(amount, sender_name)
             actual = min(amount, MAX_HP - (self.self_player.hp - amount))
-            self._log(sender_name, "HEAL", self.self_player.name,
-                      f"+{actual} HP")
+            if actual > 0:
+                self._log(sender_name, "HEAL", self.self_player.name, f"+{actual} HP")
             return (actual, result)
 
     async def process_speak(self, sender_name: str, text: str) -> str:
@@ -187,6 +198,8 @@ class GameState:
         async with self._lock:
             p = self._get_player(sender_id)
             if p:
+                if not p.is_alive():
+                    return f"Ignorado: {sender_name} tentou mover-se enquanto morto."
                 result = p.move(destination)
                 self._log(sender_name, "MOVE", destination, result)
                 return result
@@ -221,28 +234,59 @@ class GameState:
             
             return "" # Não queremos poluir o log com heartbeats
 
-    async def self_heal(self, target_id: str) -> Optional[str]:
+    async def self_heal(self, target_id: str) -> tuple[bool, str]:
         async with self._lock:
             if not self.self_player.is_alive():
-                return "You are dead."
-            return None
+                return False, "Estás morto. Não podes curar ninguém."
+            
+            target = self.peers.get(target_id)
+            if not target:
+                return False, "Alvo não encontrado."
+            
+            if not target.is_alive():
+                return False, f"{target.name} já morreu. A magia não funciona em cadáveres."
+            
+            if self.self_player.position != target.position:
+                return False, f"O alvo está em {target.position}, mas tu estás em {self.self_player.position}."
+            
+            return True, ""
 
-    async def self_move(self, destination: str) -> str:
+    async def self_move(self, destination: str) -> tuple[bool, str]:
         async with self._lock:
-            return self.self_player.move(destination)
+            if not self.self_player.is_alive():
+                return False, "Estás morto. Tens de fazer 'respawn' para te moveres."
+            if destination not in POSITIONS:
+                return False, f"Local desconhecido. Escolhe entre: {', '.join(POSITIONS)}"
+            if destination == self.self_player.position:
+                return False, f"Já estás em {destination}."
+            
+            msg = self.self_player.move(destination)
+            return True, msg
 
-    async def self_respawn(self) -> str:
+    async def self_respawn(self) -> tuple[bool, str]:
         async with self._lock:
-            return self.self_player.respawn()
+            if self.self_player.is_alive():
+                return False, "Ainda estás vivo! Não precisas de respawn."
+            msg = self.self_player.respawn()
+            return True, msg
         
     async def self_attack(self, target_id: str, weapon: str):
         """Verificação no lado de quem ataca (Cliente)"""
         async with self._lock:
+            # 1. Eu estou vivo?
+            if not self.self_player.is_alive():
+                return False, "Estás morto. Fantasmas não conseguem segurar armas."
+
             if target_id not in self.peers:
                 return False, "Alvo não encontrado."
             
             target = self.peers[target_id]
-            # ERRO CORRIGIDO: Verifica se estão na mesma posição
+            
+            # 2. O alvo está vivo?
+            if not target.is_alive():
+                return False, f"{target.name} já está morto. Deixa o pobre coitado em paz."
+
+            # 3. Verifica se estão na mesma posição
             if self.self_player.position != target.position:
                 return False, f"O alvo está em {target.position}, mas tu estás em {self.self_player.position}."
             
