@@ -94,20 +94,20 @@ class Game(multiplayer_pb2_grpc.GameServicer):
         self.peer = peer
 
     async def SetPosition(self, request, context):
-        print(f"x: {request.x}, y: {request.y}")
         peerplayer = self.peer.peers[request.uuid]
         peerplayer.x = request.x
         peerplayer.y = request.y
+        return multiplayer_pb2.Empty()
 
 class GameController:
-    def __init__(self, network):
-        self.network = network
-        self.peer = network.peer
+    def __init__(self, peer):
+        self.peer = peer
 
         self.x = self.peer.x
         self.y = self.peer.y
 
-        self.facing = "?"
+        self.height = 20
+        self.width = 20
 
         self.game = TextArea(focusable=False)
         self.info = TextArea(height=4, focusable=False)
@@ -135,55 +135,52 @@ class GameController:
             layout=Layout(HSplit([self.game, self.info])),
             key_bindings=self.kb,
             full_screen=True,
-            refresh_interval=0.1,
+            refresh_interval=0.5,
         )
 
         self.render()
 
     def render(self):
-        grid = ""
+        grid = [["." for number in range(self.width)] for number in range(self.height)]
+        for peerplayer in list(self.peer.peers.values()):
+            grid[peerplayer.y][peerplayer.x] = "@"
+        grid[self.peer.y][self.peer.x] = "@"
 
-        for y in range(self.h):
-            for x in range(self.w):
-                if x == self.x and y == self.y:
-                    grid += 5
-                else:
-                    grid += "."
-            grid += "\n"
+        rendered = "\n".join("".join(row) for row in grid)
+        self.game.text = rendered
 
-        self.game.text = grid
 
         self.info.text = (
-            f"Pos: ({self.x}, {self.y})\n"
+            f"Pos: ({self.peer.x}, {self.peer.y})\n"
         )
 
-    async def send_position(self):
-        for peer_uuid, peerplayer in self.peer.peers.items():
-            try:
-                channel = self.peer.channels.get(peer_uuid)
-                if not channel:
-                    continue
+    def handle(self, direction):
+        dx, dy = {
+            "up": (0, -1),
+            "down": (0, 1),
+            "left": (-1, 0),
+            "right": (1, 0)
+        }.get(direction, (0, 0))
 
-                stub = multiplayer_pb2_grpc.GameStub(channel)
-
-                await stub.SetPosition(
-                    multiplayer_pb2.Position(
-                        uuid=self.peer.uuid,
-                        x=self.x,
-                        y=self.y
-                    )
-                )
-            except Exception as e:
-                print(f"[POS ERROR] {e}")
-
-
-    def freeze(self, seconds):
-        self.frozen_until = time.time() + seconds
+        self.peer.x = max(0, min(self.width - 1, self.peer.x + dx))
+        self.peer.y = max(0, min(self.height - 1, self.peer.y + dy))
+        
         self.render()
 
+        asyncio.create_task(self.send_position())
+    
+    async def send_position(self):
+        for channel in list(self.peer.channels.values()):
 
-    def is_frozen(self):
-        return time.time() < self.frozen_until
+            stub = multiplayer_pb2_grpc.GameStub(channel)
+
+            await stub.SetPosition(
+                multiplayer_pb2.Position(
+                    uuid=self.peer.uuid,
+                    x=self.peer.x,
+                    y=self.peer.y
+                    )
+                )
 
 
 class Network:
@@ -201,7 +198,7 @@ class Network:
 
             chat_task = asyncio.create_task(self.chat_loop())
 
-            game = GameController(self)
+            game = GameController(self.peer)
 
             asyncio.create_task(game.app.run_async())
 
@@ -230,6 +227,11 @@ class Network:
                 chat = Chat()
                 multiplayer_pb2_grpc.add_ChatServicer_to_server(
                         chat,
+                        self.server
+                        )
+                game = Game(self.peer)
+                multiplayer_pb2_grpc.add_GameServicer_to_server(
+                        game,
                         self.server
                         )
 
