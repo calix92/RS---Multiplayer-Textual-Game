@@ -84,7 +84,10 @@ class PeerDiscovery(multiplayer_pb2_grpc.PeerDiscoveryServicer):
             return multiplayer_pb2.AllPeers(peers=allpeers)
 
         async def RemovePeer(self, request, context):
-            self.peer.peers.pop(request.uuid, None)
+            channel = self.peer.channels[request.uuid]
+            await channel.close()
+            self.peer.channels.pop(request.uuid)
+            self.peer.peers.pop(request.uuid)
             print(self.peer.peers)
 
             self.peer.refresh_game.set()
