@@ -18,11 +18,12 @@ import multiplayer_pb2_grpc
 
 
 class PeerPlayer:
-    def __init__(self, address, username, x, y):
+    def __init__(self, address, username, x, y, direction):
         self.address = address
         self.username = username
         self.x = x
         self.y = y
+        self.direction = direction
 
 class Peer:
         def __init__(self, username, host=None, port=None, bootstrap=None):
@@ -33,6 +34,7 @@ class Peer:
                 self.bootstrap = bootstrap
                 self.x = random.randint(0, 19)
                 self.y = random.randint(0, 19)
+                self.direction = "none"
                 self.peers = {}
 
 
@@ -52,7 +54,7 @@ class PeerDiscovery(multiplayer_pb2_grpc.PeerDiscoveryServicer):
                 self.peer = peer
 
         async def RegisterPeer(self, request, context):
-            self.peer.peers[request.uuid] = PeerPlayer(request.address, request.username, request.x, request.y)
+            self.peer.peers[request.uuid] = PeerPlayer(request.address, request.username, request.x, request.y, request.direction)
             print(self.peer.peers)
 
             channel = grpc.aio.insecure_channel(request.address)
@@ -68,13 +70,15 @@ class PeerDiscovery(multiplayer_pb2_grpc.PeerDiscoveryServicer):
                         address = peerplayer.address,
                         username = peerplayer.username,
                         x = peerplayer.x,
-                        y = peerplayer.y
+                        y = peerplayer.y,
+                        direction = peerplayer.direction
                         )
             allpeers[self.peer.uuid] = multiplayer_pb2.PeerInfo(
                     address = self.peer.address(),
                     username = self.peer.username,
                     x = self.peer.x,
-                    y = self.peer.y
+                    y = self.peer.y,
+                    direction = self.peer.direction
                     )
 
             return multiplayer_pb2.AllPeers(peers=allpeers)
@@ -106,6 +110,7 @@ class Game(multiplayer_pb2_grpc.GameServicer):
         peerplayer = self.peer.peers[request.uuid]
         peerplayer.x = request.x
         peerplayer.y = request.y
+        peerplayer.direction = request.direction
         self.peer.refresh_game.set()
         return multiplayer_pb2.Empty()
 
@@ -183,10 +188,17 @@ class GameController:
             "right": (1, 0)
         }
 
+        if self.peer.direction != direction:
+            self.peer.direction = direction
+            self.peer.refresh_game.set()
+            asyncio.create_task(self.network.position())
+            return
+
         dx, dy = movement[direction]
 
         self.peer.x = max(0, min(self.width - 1, self.peer.x + dx))
         self.peer.y = max(0, min(self.height - 1, self.peer.y + dy))
+        self.peer.direction = direction
         
         self.peer.refresh_game.set()
 
@@ -218,14 +230,28 @@ class GameController:
             self.render_chat()
             self.peer.refresh_chat.clear()
 
-    def render_game(self):
-        grid = [["." for number in range(self.width)] for number in range(self.height)]
-        for peerplayer in list(self.peer.peers.values()):
-            grid[peerplayer.y][peerplayer.x] = "@"
-        grid[self.peer.y][self.peer.x] = "@"
 
-        rendered = "\n".join("".join(row) for row in grid)
-        self.game_display.text = rendered
+    def render_game(self):
+        grid = [["." for _ in range(self.width)] for _ in range(self.height)]
+
+        symbols = {
+            "up": "^",
+            "down": "v",
+            "left": "<",
+            "right": ">",
+            "none": "@"
+        }
+
+        for peerplayer in list(self.peer.peers.values()):
+            symbol = symbols[peerplayer.direction]
+
+            grid[peerplayer.y][peerplayer.x] = symbol
+
+        symbol = symbols[self.peer.direction]
+
+        grid[self.peer.y][self.peer.x] = symbol
+
+        self.game_display.text = "\n".join("".join(row) for row in grid)
 
 
     def render_chat(self):
@@ -306,7 +332,8 @@ class Network:
                             peerplayer.address,
                             peerplayer.username,
                             peerplayer.x,
-                            peerplayer.y
+                            peerplayer.y,
+                            peerplayer.direction
                             )
 
                 print(self.peer.peers)
@@ -326,7 +353,8 @@ class Network:
                                         address = self.peer.address(),
                                         username = self.peer.username,
                                         x = self.peer.x,
-                                        y = self.peer.y
+                                        y = self.peer.y,
+                                        direction = self.peer.direction
                                 )
                         )
 
@@ -348,9 +376,10 @@ class Network:
 
                 await stub.SetPosition(
                     multiplayer_pb2.Position(
-                        uuid=self.peer.uuid,
-                        x=self.peer.x,
-                        y=self.peer.y
+                        uuid = self.peer.uuid,
+                        x = self.peer.x,
+                        y = self.peer.y,
+                        direction = self.peer.direction
                         )
                     )
 
