@@ -151,13 +151,12 @@ class Network:
                 await self.broadcast(message)
 
         
-        """
         async def broadcast(self, message):
-            for uuid in list(self.peer.peers.keys()):
-                stub = self.peer.stubs_chat.get(uuid, None)
-                if not stub :
-                    stub = multiplayer_pb2_grpc.ChatStub(self.peer.channels[uuid])
-                    self.peer.stubs_chat[uuid] = stub
+            for peer_uuid in list(self.peer.peers.keys()):
+                stub = self.get_stubs_chat(peer_uuid)
+
+                if stub is None:
+                    continue
 
                 await stub.Broadcast(
                         multiplayer_pb2.BroadcastMessage(
@@ -165,58 +164,21 @@ class Network:
                             text = message
                             )
                         )
-        """
 
+        def get_stubs_chat(self, peer_uuid):
+            try:
+                stub = self.peer.stubs_chat.get(peer_uuid, None)
+                if not stub:
+                    channel = self.peer.channels.get(peer_uuid, None)
+                    if not channel:
+                        return None
+                    stub = multiplayer_pb2_grpc.ChatStub(channel)
+                    self.peer.stubs_chat[peer_uuid] = stub
 
-        async def broadcast(self, message):
-            for peer_uuid in list(self.peer.peers.keys()):
-                try:
-                    stub = self.peer.stubs_chat.get(peer_uuid, None)
-                    if not stub :
-                        channel = self.peer.channels.get(peer_uuid)
-                        if not channel:
-                            continue
-                        stub = multiplayer_pb2_grpc.ChatStub(channel)
-                        self.peer.stubs_chat[peer_uuid] = stub
+                return stub
+            except Exception as e:
+                print(e)
 
-                    await stub.Broadcast(
-                            multiplayer_pb2.BroadcastMessage(
-                                from_uuid = self.peer.uuid,
-                                text = message
-                                )
-                            )
-                except Exception as e:
-                    print(e)
-
-
-        """
-        async def broadcast(self, message):
-    
-            for peer_uuid in list(self.peer.peers.keys()):
-        
-                try:
-                    stub = self.peer.stubs_chat.get(peer_uuid)
-    
-                    if not stub:
-        
-                        channel = self.peer.channels.get(peer_uuid)
-        
-                        if not channel:
-                            continue
-        
-                        stub = multiplayer_pb2_grpc.ChatStub(channel)
-                        self.peer.stubs_chat[peer_uuid] = stub
-        
-                    response = stub.Broadcast(
-                        multiplayer_pb2.BroadcastMessage(
-                            from_uuid=self.peer.uuid,
-                            text=message
-                        )
-                    )
-
-                except Exception as e:
-                    print(f"[ERROR] Failed peer {peer_uuid}: {type(e).__name__}: {e}")
-        """
 
         async def stop(self):
                 for peer_address in list(self.peer.peers.values()):
@@ -225,6 +187,7 @@ class Network:
 
                         channel = grpc.aio.insecure_channel(peer_address)
                         stub = multiplayer_pb2_grpc.PeerDiscoveryStub(channel)
+                        
 
                         await stub.RemovePeer(
                                 multiplayer_pb2.Peer(
@@ -235,6 +198,8 @@ class Network:
 
                         await channel.close()
 
+                for channel in self.peer.channels.values():
+                            await channel.close()
 
 def main():
         parser = argparse.ArgumentParser()
