@@ -105,16 +105,31 @@ class Game(multiplayer_pb2_grpc.GameServicer):
         return multiplayer_pb2.Empty()
 
 class GameController:
-    def __init__(self, peer):
-        self.peer = peer
+    def __init__(self, network):
+        self.network = network
+        self.peer = self.network.peer
         self.peer.refresh = asyncio.Event()
         self.peer.refresh.set()
 
         self.height = 20
         self.width = 20
 
-        self.game = TextArea(focusable=False)
-        self.info = TextArea(height=4, focusable=False)
+        self.chat_messages = []
+
+        self.game_display = TextArea(
+                focusable=False, 
+                height=20
+                )
+        self.chat_display = TextArea(
+                focusable = False,
+                height = 4
+                )
+        self.input_field = TextArea(
+                focusable = True,
+                prompt = "> ",
+                multiline = False,
+                height = 1
+                )
 
         self.kb = KeyBindings()
 
@@ -130,16 +145,26 @@ class GameController:
         @self.kb.add("right")
         def _(event): self.handle("right")
 
+        @self.kb.add("enter")
+        def _(event): self.send_message()
+
         @self.kb.add("c-c")
         def _(event):
             event.app.exit()
             raise KeyboardInterrupt
 
         self.app = Application(
-            layout=Layout(HSplit([self.game, self.info])),
+            layout=Layout(
+                HSplit([
+                    self.game_display,
+                    self.chat_display,
+                    self.input_field
+                ])
+            ),
             key_bindings=self.kb,
-            full_screen=True,
-        )
+            full_screen=True
+            #refresh_interval = 0.05
+            )
 
         asyncio.create_task(self.loop())
 
@@ -156,12 +181,8 @@ class GameController:
         grid[self.peer.y][self.peer.x] = "@"
 
         rendered = "\n".join("".join(row) for row in grid)
-        self.game.text = rendered
+        self.game_display.text = rendered
 
-
-        self.info.text = (
-            f"Pos: ({self.peer.x}, {self.peer.y})\n"
-        )
 
     def handle(self, direction):
         movement = {
@@ -180,6 +201,24 @@ class GameController:
 
         asyncio.create_task(self.send_position())
     
+
+    def add_message(self, msg):
+        self.chat_messages.append(msg)
+        self.chat_messages = self.chat_messages[-4:]
+        self.chat_display.text = "\n".join(self.chat_messages)
+
+    def send_message(self):
+        msg = self.input_field.text.strip()
+        if not msg:
+            return
+
+        self.input_field.text = ""
+
+        self.add_message(f"You screamed: {msg}")
+
+        asyncio.create_task(self.network.broadcast(msg))
+
+
     async def send_position(self):
         for channel in list(self.peer.channels.values()):
 
@@ -209,7 +248,7 @@ class Network:
 
             chat_task = asyncio.create_task(self.chat_loop())
 
-            game = GameController(self.peer)
+            game = GameController(self)
 
             asyncio.create_task(game.app.run_async())
 
