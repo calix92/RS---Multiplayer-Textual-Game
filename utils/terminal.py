@@ -7,28 +7,53 @@ from game.state import GameState, POSITIONS, WEAPON_DAMAGE
 
 log = logging.getLogger('terminal')
 
-BANNER = '--- P2P RPG ---'
+BANNER = """
+\033[95m
+  ██████╗ ██████╗ ██████╗     ██████╗ ██████╗  ██████╗ 
+  ██╔══██╗██╔══██╗██╔══██╗    ██╔══██╗██╔══██╗██╔════╝ 
+  ██████╔╝██████╔╝██████╔╝    ██████╔╝██████╔╝██║  ███╗ 
+  ██╔═══╝ ██╔══██╗██╔═══╝     ██╔══██╗██╔═══╝ ██║   ██║ 
+  ██║     ██║  ██║██║         ██║  ██║██║     ╚██████╔╝ 
+  ╚═╝     ╚═╝  ╚═╝╚═╝         ╚═╝  ╚═╝╚═╝      ╚═════╝  
+\033[0m"""
 
 HELP_TEXT = """
-MENU DE COMANDOS:
-- say <mensagem>       : Chat para todos
-- move <local>         : Mudar de zona
-- attack <nome> [arma] : Atacar jogador (ex: attack Calix axe)
-- heal <nome>          : Curar jogador (+15 HP)
-- status               : Ver HP de todos
-- log                  : Ver ultimos eventos
-- peers                : Ver nos da rede
-- find <id>            : Procurar endereco de um ID na DHT
-- ping <nome>          : Testar ligação a um jogador
-- respawn              : Reviver
-- help                 : Este menu
-- quit                 : Sair
+\033[1mMENU DE COMANDOS:\033[0m
+- \033[96msay\033[0m <msg>            : Chat para todos
+- \033[96mmove\033[0m <local>         : Mudar de zona
+- \033[96mlook\033[0m                 : Ver quem está em cada sala
+- \033[91mattack\033[0m <nome> [arma] : Atacar jogador
+- \033[92mheal\033[0m <nome>           : Curar jogador (+15 HP)
+- \033[93mstatus\033[0m               : Ver vida e posição de todos
+- \033[93mlog\033[0m                  : Ver últimos eventos
+- \033[94mpeers\033[0m                : Ver detalhes técnicos da rede
+- \033[95mrespawn\033[0m              : Reviver (se estiveres morto)
+- \033[1mquit\033[0m                 : Sair do jogo
 """
+
+DEATH_SCREEN = """
+\033[91m
+      NOOOO! TU MORRESTE!
+           ______
+        .-"      "-.
+       /            \\
+      |              |
+      |,  .-.  .-.  ,|
+      | )(__/  \__)( |
+      |/     /\     \|
+      (_     ^^     _)
+       \__|IIIIII|__/
+        | \IIIIII/ |
+        \          /
+         `--------`
+    Digita 'respawn' para voltar!
+\033[0m"""
 
 def red(s):    return f'\033[91m{s}\033[0m'
 def green(s):  return f'\033[92m{s}\033[0m'
 def yellow(s): return f'\033[93m{s}\033[0m'
 def cyan(s):   return f'\033[96m{s}\033[0m'
+def magenta(s):return f'\033[95m{s}\033[0m'
 def bold(s):   return f'\033[1m{s}\033[0m'
 
 class Terminal:
@@ -42,8 +67,9 @@ class Terminal:
         self._event_queue.put_nowait(message)
 
     async def run_loop(self):
+        os.system('clear' if os.name == 'posix' else 'cls')
         print(BANNER)
-        print(green(f'  Bem-vindo, {bold(self.state.self_player.name)}!'))
+        print(green(f'  Bem-vindo, herói {bold(self.state.self_player.name)}!'))
         print(cyan('  Escreve "help" para ver os comandos.'))
         
         input_task = asyncio.create_task(self._input_loop())
@@ -65,8 +91,10 @@ class Terminal:
     async def _input_loop(self):
         try:
             while self._running:
+                # Se estivermos mortos, mostramos um prompt diferente
+                prompt_color = red if not self.state.self_player.is_alive() else cyan
                 try:
-                    raw = await aioconsole.ainput(cyan('⚔  > '))
+                    raw = await aioconsole.ainput(prompt_color('⚔  > '))
                 except (EOFError, KeyboardInterrupt):
                     self._running = False
                     break
@@ -78,7 +106,7 @@ class Terminal:
                 args = parts[1] if len(parts) > 1 else ''
                 
                 if cmd in ('quit', 'exit'):
-                    print(yellow('A sair...'))
+                    print(yellow('A sair do reino...'))
                     self._running = False
                     if self.handler: await self.handler('quit', '')
                     break
@@ -90,10 +118,16 @@ class Terminal:
         try:
             if cmd == 'help':
                 print(HELP_TEXT)
-                print('Armas: ' + ', '.join(WEAPON_DAMAGE.keys()))
-                print('Locais: ' + ', '.join(POSITIONS))
             elif cmd == 'status':
                 print(self.state.status_board())
+            elif cmd == 'look':
+                rooms = self.state.get_room_occupants()
+                print(bold("\n--- MAPA DO REINO ---"))
+                for room, folks in rooms.items():
+                    color = green if room == self.state.self_player.position else cyan
+                    folks_str = ", ".join(folks) if folks else "Vazio"
+                    print(f" {color(room):<20} : {folks_str}")
+                print()
             elif cmd == 'log':
                 events = self.state.recent_events(12)
                 print('\n'.join(events) if events else 'Sem eventos.')
@@ -126,13 +160,30 @@ class Terminal:
             while self._running:
                 try:
                     msg = await asyncio.wait_for(self._event_queue.get(), timeout=0.5)
-                    # \r -> volta ao início da linha
-                    # \033[K -> limpa a linha até ao fim
-                    print(f'\r\033[K  {yellow("►")} {msg}')
-                    # Redesenha o prompt e o que o utilizador já tinha escrito (se possível)
-                    # Nota: aioconsole é difícil de sincronizar 100%, mas isto ajuda imenso
+                    
+                    # Formatação especial baseada no conteúdo da mensagem
+                    final_msg = msg
+                    if "took" in msg or "Atacou" in msg:
+                        final_msg = red(f"💥 {msg}")
+                    elif "healed" in msg or "Curaste" in msg:
+                        final_msg = green(f"✨ {msg}")
+                    elif "moved" in msg:
+                        final_msg = cyan(f"🏃 {msg}")
+                    elif "DIED" in msg:
+                        final_msg = bold(red(f"💀 {msg}"))
+                        # Se fomos NÓS que morremos, mostrar a tela de morte
+                        if self.state.self_player.name in msg and not self.state.self_player.is_alive():
+                            print(DEATH_SCREEN)
+                    elif "joined" in msg or "entrou" in msg:
+                        final_msg = magenta(f"👋 {msg}")
+                    else:
+                        final_msg = yellow(f"► {msg}")
+
+                    print(f'\r\033[K  {final_msg}')
+                    
                     if self._running:
-                        print(cyan('⚔  > '), end='', flush=True)
+                        prompt_color = red if not self.state.self_player.is_alive() else cyan
+                        print(prompt_color('⚔  > '), end='', flush=True)
                 except asyncio.TimeoutError:
                     continue
                 except Exception:

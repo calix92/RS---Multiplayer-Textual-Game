@@ -387,3 +387,14 @@ class GameState:
     def recent_events(self, n: int = 8) -> list[str]:
         return [f"  {e.actor} → {e.action}({e.target}): {e.result}"
                 for e in self.event_log[-n:]]
+
+    def get_room_occupants(self) -> dict[str, list[str]]:
+        """Retorna um dicionário de Local -> Lista de Nomes de jogadores."""
+        rooms = {pos: [] for pos in POSITIONS}
+        # Adiciona-me
+        rooms[self.self_player.position].append(f"{self.self_player.name} (TU)")
+        # Adiciona os outros
+        for p in self.peers.values():
+            status = " [MORTO]" if not p.is_alive() else ""
+            rooms[p.position].append(f"{p.name}{status}")
+        return rooms
