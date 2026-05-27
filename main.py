@@ -88,8 +88,13 @@ class PeerDiscovery(multiplayer_pb2_grpc.PeerDiscoveryServicer):
 
 
 class Chat(multiplayer_pb2_grpc.ChatServicer):
+    def __init__(self, peer):
+        self.peer = peer
+
     async def Broadcast(self, request, context):
-        print(f"{request.username} screamed: {request.text}")
+        self.peer.messages.append(f"{request.username} screamed: {request.text}")
+        self.peer.refresh_chat.set()
+
         return multiplayer_pb2.Empty()
 
 
@@ -110,11 +115,12 @@ class GameController:
         self.peer = self.network.peer
         self.peer.refresh = asyncio.Event()
         self.peer.refresh.set()
+        self.peer.refresh_chat = asyncio.Event()
+        self.peer.messages = []
 
         self.height = 20
         self.width = 20
 
-        self.chat_messages = []
 
         self.game_display = TextArea(
                 focusable=False, 
@@ -163,10 +169,10 @@ class GameController:
             ),
             key_bindings=self.kb,
             full_screen=True
-            #refresh_interval = 0.05
             )
 
         asyncio.create_task(self.loop())
+        asyncio.create_task(self.loop_chat())
 
     async def loop(self):
         while True:
@@ -174,6 +180,12 @@ class GameController:
             self.render()
             self.peer.refresh.clear()
         
+    async def loop_chat(self):
+        while True:
+            await self.peer.refresh_chat.wait()
+            self.render_chat()
+            self.peer.refresh_chat.clear()
+
     def render(self):
         grid = [["." for number in range(self.width)] for number in range(self.height)]
         for peerplayer in list(self.peer.peers.values()):
@@ -182,6 +194,11 @@ class GameController:
 
         rendered = "\n".join("".join(row) for row in grid)
         self.game_display.text = rendered
+
+
+    def render_chat(self):
+        self.peer.messages = self.peer.messages[-4:]
+        self.chat_display.text = "\n".join(self.peer.messages)
 
 
     def handle(self, direction):
@@ -202,11 +219,6 @@ class GameController:
         asyncio.create_task(self.send_position())
     
 
-    def add_message(self, msg):
-        self.chat_messages.append(msg)
-        self.chat_messages = self.chat_messages[-4:]
-        self.chat_display.text = "\n".join(self.chat_messages)
-
     def send_message(self):
         msg = self.input_field.text.strip()
         if not msg:
@@ -214,7 +226,8 @@ class GameController:
 
         self.input_field.text = ""
 
-        self.add_message(f"You screamed: {msg}")
+        self.peer.messages.append(f"You screamed: {msg}")
+        self.peer.refresh_chat.set()
 
         asyncio.create_task(self.network.broadcast(msg))
 
@@ -274,7 +287,7 @@ class Network:
                         peerdiscovery,
                         self.server
                 )
-                chat = Chat()
+                chat = Chat(self.peer)
                 multiplayer_pb2_grpc.add_ChatServicer_to_server(
                         chat,
                         self.server
