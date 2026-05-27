@@ -13,8 +13,19 @@ logging.basicConfig(level=logging.WARNING)
 
 def get_lan_ip():
     """Tenta descobrir o IP da rede local de forma robusta."""
-    # Tenta vários destinos para forçar o SO a escolher a interface de rede ativa
-    for target in ["8.8.8.8", "10.255.255.255", "192.168.1.255"]:
+    try:
+        # Tenta conectar a um IP externo (não envia dados) para ver qual interface o SO usa
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.settimeout(0)
+            s.connect(('8.8.8.8', 1))
+            ip = s.getsockname()[0]
+            if ip and not ip.startswith("127."):
+                return ip
+    except Exception:
+        pass
+
+    # Fallback para interfaces comuns
+    for target in ["10.255.255.255", "192.168.1.255"]:
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
                 s.connect((target, 1))
@@ -23,16 +34,6 @@ def get_lan_ip():
                     return ip
         except Exception:
             continue
-
-    # Alternativa: Ver o IP associado ao hostname
-    try:
-        hostname = socket.gethostname()
-        ips = socket.gethostbyname_ex(hostname)[2]
-        for ip in ips:
-            if not ip.startswith("127."):
-                return ip
-    except Exception:
-        pass
     
     return "127.0.0.1"
 
