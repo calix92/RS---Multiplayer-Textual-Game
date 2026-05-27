@@ -31,9 +31,10 @@ class Peer:
                 self.host = host or "127.0.0.1"
                 self.port = port or self._free_port()
                 self.bootstrap = bootstrap
-                self.x = random.randint(0, 20)
-                self.y = random.randint(0, 20)
+                self.x = random.randint(0, 19)
+                self.y = random.randint(0, 19)
                 self.peers = {}
+
 
         def address(self):
                 return f"{self.host}:{self.port}"
@@ -57,6 +58,7 @@ class PeerDiscovery(multiplayer_pb2_grpc.PeerDiscoveryServicer):
             channel = grpc.aio.insecure_channel(request.address)
             self.peer.channels[request.uuid] = channel
 
+            self.peer.refresh.set()
             return multiplayer_pb2.Empty()
 
         async def GetPeers(self, request, context):
@@ -80,6 +82,8 @@ class PeerDiscovery(multiplayer_pb2_grpc.PeerDiscoveryServicer):
         async def RemovePeer(self, request, context):
             self.peer.peers.pop(request.uuid, None)
             print(self.peer.peers)
+
+            self.peer.refresh.set()
             return multiplayer_pb2.Empty()
 
 
@@ -97,13 +101,14 @@ class Game(multiplayer_pb2_grpc.GameServicer):
         peerplayer = self.peer.peers[request.uuid]
         peerplayer.x = request.x
         peerplayer.y = request.y
-        self.peer.needs_refresh = True
+        self.peer.refresh.set()
         return multiplayer_pb2.Empty()
 
 class GameController:
     def __init__(self, peer):
         self.peer = peer
-        self.peer.needs_refresh = True
+        self.peer.refresh = asyncio.Event()
+        self.peer.refresh.set()
 
         self.height = 20
         self.width = 20
@@ -140,11 +145,9 @@ class GameController:
 
     async def loop(self):
         while True:
-            if self.peer.needs_refresh:
-                self.render()
-                self.peer.needs_refresh = False
-
-            await asyncio.sleep(0.03)
+            await self.peer.refresh.wait()
+            self.render()
+            self.peer.refresh.clear()
         
     def render(self):
         grid = [["." for number in range(self.width)] for number in range(self.height)]
@@ -161,17 +164,19 @@ class GameController:
         )
 
     def handle(self, direction):
-        dx, dy = {
+        movement = {
             "up": (0, -1),
             "down": (0, 1),
             "left": (-1, 0),
             "right": (1, 0)
-        }.get(direction, (0, 0))
+        }
+
+        dx, dy = movement[direction]
 
         self.peer.x = max(0, min(self.width - 1, self.peer.x + dx))
         self.peer.y = max(0, min(self.height - 1, self.peer.y + dy))
         
-        self.render()
+        self.peer.refresh.set()
 
         asyncio.create_task(self.send_position())
     
