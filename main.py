@@ -3,13 +3,13 @@ import argparse
 import logging
 import socket
 import sys
-from game.state import GameState
-from dht.kademlia import DHTNode, NodeInfo, node_id_from
-from network.server import start_server
-from network.client import BroadcastClient, PeerClient
-from utils.terminal import Terminal
+import os
 
-logging.basicConfig(level=logging.WARNING)
+# Silenciar logs técnicos do gRPC e C++
+os.environ['GRPC_VERBOSITY'] = 'NONE'
+os.environ['GLOG_minloglevel'] = '3'
+
+logging.basicConfig(level=logging.CRITICAL)
 
 def get_lan_ip():
     try:
