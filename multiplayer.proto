@@ -15,6 +15,7 @@ message Peer {
   int32 x = 4;
   int32 y = 5;
   string direction = 6;
+  int32 hp =7;
 }
 
 message AllPeers {
@@ -27,6 +28,7 @@ message PeerInfo {
   int32 x = 3;
   int32 y = 4;
   string direction = 5;
+  int32 hp = 6;
 }
 
 service Chat {

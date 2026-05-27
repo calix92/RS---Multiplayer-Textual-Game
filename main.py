@@ -8,6 +8,7 @@ from prompt_toolkit.widgets import Label
 from prompt_toolkit import PromptSession
 import argparse
 import asyncio
+import math
 import random
 import socket
 import sys
@@ -36,6 +37,7 @@ class Peer:
                 self.x = random.randint(0, 19)
                 self.y = random.randint(0, 19)
                 self.direction = "none"
+                self.hp = 20
                 self.peers = {}
                 self.announcements = []
 
@@ -131,11 +133,18 @@ class GameController:
         self.peer.messages = []
         self.peer.refresh_news = asyncio.Event()
         self.peer.refresh_news.set()
+        self.peer.refresh_status = asyncio.Event()
+        self.peer.refresh_status.set()
 
-        self.height = 40
+        self.height = 38
         self.width = 40
 
+        self.recover = 0
 
+        self.warrior = TextArea(
+                focusable = False,
+                height = 4
+                )
         self.news_display = TextArea(
                 focusable = False,
                 height = 8
@@ -158,6 +167,11 @@ class GameController:
 
         self.kb = KeyBindings()
 
+        for i in range(1, 10):
+            @self.kb.add(str(i))
+            def _(event):
+                self.action_attack(i)
+
         @self.kb.add("up")
         def _(event): self.action_position("up")
 
@@ -171,7 +185,7 @@ class GameController:
         def _(event): self.action_position("right")
 
         @self.kb.add("enter")
-        def _(event): self.action_chat()
+        def _(event): self.action_input()
 
         @self.kb.add("c-c")
         def _(event):
@@ -181,6 +195,7 @@ class GameController:
         self.app = Application(
             layout=Layout(
                 HSplit([
+                    self.warrior,
                     self.label(" Announcements "),
                     self.news_display,
                     Label(""),
@@ -196,17 +211,21 @@ class GameController:
             full_screen=True
             )
 
+        asyncio.create_task(self.loop_status())
+        asyncio.create_task(self.loop_news())
         asyncio.create_task(self.loop_game())
         asyncio.create_task(self.loop_chat())
-        asyncio.create_task(self.loop_news())
 
     
     def label(self, message):
         size_message = len(message)
         size_borders = int((self.width + 2 - size_message)/2)
         return Label("=" * size_borders + message + "=" * size_borders)
-
+    
     def action_position(self, direction):
+        if not self.is_ready():
+            return
+
         movement = {
             "up": (0, -1),
             "down": (0, 1),
@@ -231,7 +250,14 @@ class GameController:
         asyncio.create_task(self.network.position())
 
 
-    def action_chat(self):
+    def action_attack(self, level):
+        recover = math.sqrt(level)
+        self.recover = time.time() + recover
+    
+    def is_ready(self):
+        return time.time() > self.recover
+
+    def action_input(self):
         msg = self.input_field.text.strip()
         if not msg:
             return
@@ -243,6 +269,18 @@ class GameController:
 
         asyncio.create_task(self.network.broadcast(msg))
 
+
+    async def loop_status(self):
+        while True:
+            await self.peer.refresh_status.wait()
+            self.render_status()
+            self.peer.refresh_status.clear()
+
+    async def loop_news(self):
+        while True:
+            await self.peer.refresh_news.wait()
+            self.render_news()
+            self.peer.refresh_news.clear()
 
     async def loop_game(self):
         while True:
@@ -256,11 +294,17 @@ class GameController:
             self.render_chat()
             self.peer.refresh_chat.clear()
 
-    async def loop_news(self):
-        while True:
-            await self.peer.refresh_news.wait()
-            self.render_news()
-            self.peer.refresh_news.clear()
+    def render_status(self):
+        top = f"Battlefield's localization: {self.peer.address()}"
+        middle = f"Warrior's Name: {self.peer.username}"
+        bottom = f"Warrior's Health Points: {self.peer.hp}"
+
+        final = [top] + [middle] + [bottom]
+        self.warrior.text = "\n".join(final)
+        
+    def render_news(self):
+        self.peer.announcements = self.peer.announcements[-8:]
+        self.news_display.text = "\n".join(self.peer.announcements)
 
     def render_game(self):
         grid = [["." for _ in range(self.width)] for _ in range(self.height)]
@@ -291,10 +335,6 @@ class GameController:
     def render_chat(self):
         self.peer.messages = self.peer.messages[-4:]
         self.chat_display.text = "\n".join(self.peer.messages)
-
-    def render_news(self):
-        self.peer.announcements = self.peer.announcements[-8:]
-        self.news_display.text = "\n".join(self.peer.announcements)
 
 
 class Network:
