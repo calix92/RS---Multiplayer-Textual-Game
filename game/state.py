@@ -217,13 +217,15 @@ class GameState:
             return len(dead) > 0
 
     def status_board(self) -> str:
-        p = self.self_player
+        p, leader_id = self.self_player, self.get_leader_id()
+        is_leader = " ⭐" if p.player_id == leader_id else ""
         lines = ["="*50, f"  ⚔  REALM OF ASYNCIO  ⚔", "="*50,
-                 f"  {'💚' if p.is_alive() else '💀'} YOU  {p.name:<16} HP {p.hp:>3}/{MAX_HP}  📍{p.position}"]
+                 f"  {'💚' if p.is_alive() else '💀'} YOU  {p.name + is_leader:<16} HP {p.hp:>3}/{MAX_HP}  📍{p.position}"]
         if self.peers:
             lines.append("-" * 50)
-            for peer in self.peers.values():
-                lines.append(f"  {'💚' if peer.is_alive() else '💀'}     {peer.name:<16} HP {peer.hp:>3}/{MAX_HP}  📍{peer.position}")
+            for pid, peer in self.peers.items():
+                is_p_leader = " ⭐" if pid == leader_id else ""
+                lines.append(f"  {'💚' if peer.is_alive() else '💀'}     {peer.name + is_p_leader:<16} HP {peer.hp:>3}/{MAX_HP}  📍{peer.position}")
         lines.append("="*50)
         return "\n".join(lines)
 
@@ -236,3 +238,8 @@ class GameState:
         for p in self.peers.values():
             rooms[p.position].append(f"{p.name}{'' if p.is_alive() else ' [MORTO]'}")
         return rooms
+
+    def get_leader_id(self) -> str:
+        """O líder é o nó ativo com o menor ID (o mais 'estável')."""
+        candidates = [self.self_player.player_id] + list(self.peers.keys())
+        return min(candidates) if candidates else self.self_player.player_id

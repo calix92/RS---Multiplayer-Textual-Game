@@ -1,8 +1,10 @@
-docker build -t p2p-rpg .
-(docker build --no-cache -t p2p-rpg .)
+python3 -m venv venv
 
-docker run -it --name player1 --network host p2p-rpg --name Arqueiro --port 50051
+source venv/bin/activate
 
-docker run -it --name player2 --network host p2p-rpg --name Guerreiro --port 50052 --bootstrap 127.0.0.1:50051
+pip install -r requirements.txt
 
-docker rm player1 player2
+python3 main.py --name <Nome> --port 50051 --ip <ip_host>    (Host)
+
+python3 main.py --name <Nome> --port 50051 --ip <ip_do_player> --bootstrap <ip_host>:50051
+
