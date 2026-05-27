@@ -201,6 +201,26 @@ class GameState:
         await self.remove_peer(sender_id)
         return f"{sender_name} left the game"
 
+    async def process_status(self, sender_id: str, sender_name: str, payload: str) -> str:
+        """Processa atualização de estado (HP, Posição) vinda de outro jogador."""
+        async with self._lock:
+            p = self._get_player(sender_id)
+            if not p:
+                return "" # Ignoramos status de quem não conhecemos ainda
+            
+            try:
+                # payload format: "hp:status:position"
+                parts = payload.split(":")
+                if len(parts) >= 3:
+                    p.hp = int(parts[0])
+                    p.status = PlayerStatus(parts[1])
+                    p.position = parts[2]
+                    p.touch()
+            except Exception as e:
+                log.error(f"Erro ao processar status de {sender_name}: {e}")
+            
+            return "" # Não queremos poluir o log com heartbeats
+
     async def self_heal(self, target_id: str) -> Optional[str]:
         async with self._lock:
             if not self.self_player.is_alive():

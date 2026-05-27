@@ -87,6 +87,7 @@ class GameServicer(game_pb2_grpc.GameServiceServicer):
                 msg = await self.state.process_join(sid, sname, ip, port)
                 self.dht.add_peer(NodeInfo(sid, ip, port, sname))
             elif at == 5: msg = await self.state.process_leave(sid, sname)
+            elif at == 6: msg = await self.state.process_status(sid, sname, pay)
         except Exception as e: msg = f"Erro: {e}"
         if msg: self.on_event(msg)
         return game_pb2.ActionResponse(success=True, message=msg, hp_delta=hp)

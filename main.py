@@ -41,10 +41,16 @@ async def maintenance_loop(player_id, name, ip, port, state, dht, client):
     """Mantém a rede viva e reconecta se necessário."""
     try:
         while True:
-            await asyncio.sleep(20)
-            # Re-anuncia a nossa presença
+            await asyncio.sleep(5) # Atualiza o estado a cada 5 segundos
+            
+            # 1. Envia o nosso estado (HP, etc) para todos
+            p = state.self_player
+            await client.announce_status(player_id, name, p.hp, p.status.value, p.position)
+            
+            # 2. Re-anuncia a nossa presença na DHT (menos frequente)
             await client.announce_join(player_id, name, ip, port)
             
+            # 3. Ping para manter ligações vivas
             for peer in dht.all_peers():
                 if peer.node_id != player_id:
                     try:
