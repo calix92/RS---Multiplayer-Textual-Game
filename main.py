@@ -65,7 +65,7 @@ class PeerDiscovery(multiplayer_pb2_grpc.PeerDiscoveryServicer):
 
 class Chat(multiplayer_pb2_grpc.ChatServicer):
     async def Broadcast(self, request, context):
-        print(f"From {request.from_uuid} to everyone: {request.text}")
+        print(f"{request.username} screamed: {request.text}")
         return multiplayer_pb2.Empty()
 
 
@@ -127,7 +127,6 @@ class Network:
                         await self.join()
 
 
-        """
         async def join(self):
                 channel = grpc.aio.insecure_channel(self.peer.bootstrap)
                 stub = multiplayer_pb2_grpc.PeerDiscoveryStub(channel)
@@ -154,75 +153,6 @@ class Network:
                                         username = self.peer.username
                                 )
                         )
-        """
-
-
-        async def join(self):
-            print("\n[DEBUG][JOIN] Starting join process")
-            print(f"[DEBUG][JOIN] Bootstrap: {self.peer.bootstrap}")
-            print(f"[DEBUG][JOIN] My UUID: {self.peer.uuid}")
-            print(f"[DEBUG][JOIN] My address: {self.peer.address()}\n")
-    
-            # 1. conectar ao bootstrap
-            print("[DEBUG][JOIN] Connecting to bootstrap node...")
-    
-            channel = grpc.aio.insecure_channel(self.peer.bootstrap)
-            stub = multiplayer_pb2_grpc.PeerDiscoveryStub(channel)
-    
-            print("[DEBUG][JOIN] Requesting peer list from bootstrap...")
-            getpeers = await stub.GetPeers(multiplayer_pb2.Empty())
-    
-            print(f"[DEBUG][JOIN] Received {len(getpeers.peers)} peers from bootstrap")
-    
-            # 2. processar peers recebidos
-            for peer_uuid, peerplayer in getpeers.peers.items():
-                print(f"\n[DEBUG][JOIN] Processing peer: {peer_uuid}")
-                print(f"[DEBUG][JOIN] Address: {peerplayer.address}")
-                print(f"[DEBUG][JOIN] Username: {peerplayer.username}")
-    
-                self.peer.peers[peer_uuid] = PeerPlayer(
-                    peerplayer.address,
-                    peerplayer.username
-                )
-        
-            print("\n[DEBUG][JOIN] Local peer list updated:")
-            for k, v in self.peer.peers.items():
-                print(f"    - {k} -> {v.username} @ {v.address}")
-        
-            await channel.close()
-            print("\n[DEBUG][JOIN] Bootstrap channel closed\n")
-    
-            # 3. registar este peer nos outros peers
-            print("[DEBUG][JOIN] Registering self in other peers...\n")
-    
-            for peer_uuid, peerplayer in dict(self.peer.peers).items():
-        
-                print(f"[DEBUG][JOIN] ---- Connecting to peer {peer_uuid} ----")
-                print(f"[DEBUG][JOIN] Target address: {peerplayer.address}")
-    
-                try:
-                    channel = grpc.aio.insecure_channel(peerplayer.address)
-                    stub = multiplayer_pb2_grpc.PeerDiscoveryStub(channel)
-    
-                    self.peer.channels[peer_uuid] = channel
-    
-                    print(f"[DEBUG][JOIN] Sending RegisterPeer to {peer_uuid}")
-    
-                    await stub.RegisterPeer(
-                        multiplayer_pb2.Peer(
-                            uuid=self.peer.uuid,
-                            address=self.peer.address(),
-                            username=self.peer.username
-                        )
-                    )
-    
-                    print(f"[DEBUG][JOIN] Successfully registered with {peer_uuid}")
-    
-                except Exception as e:
-                    print(f"[ERROR][JOIN] Failed with {peer_uuid}: {type(e).__name__}: {e}")
-
-            print("\n[DEBUG][JOIN] Join process completed\n")
-
 
 
         async def chat_loop(self):
@@ -238,7 +168,7 @@ class Network:
 
                 await stub.Broadcast(
                         multiplayer_pb2.BroadcastMessage(
-                            from_uuid = self.peer.uuid,
+                            username = self.peer.username,
                             text = message
                             )
                         )
