@@ -26,6 +26,10 @@ class GameServicer(game_pb2_grpc.GameServiceServicer):
         if sid in self.state.peers:
             p = self.state.peers[sid]
             p.touch()
+            # Update name if placeholder
+            if sname and sname not in ["Peer", "Host"] and p.name in ["Peer", "Host", "Desconhecido"]:
+                p.name = sname
+            
             if in_ip and not in_ip.startswith("127.") and (p.ip.startswith("127.") or p.ip != in_ip):
                 p.ip = in_ip
                 node = next((n for n in self.dht.all_peers() if n.node_id == sid), None)

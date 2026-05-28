@@ -118,9 +118,9 @@ async def main():
         try:
             b_ip, b_port = args.bootstrap.split(":") if ":" in args.bootstrap else (args.bootstrap, 50051)
             b_id = node_id_from(b_ip, int(b_port))
-            b_node = NodeInfo(b_id, b_ip, int(b_port), "Host")
+            b_node = NodeInfo(b_id, b_ip, int(b_port), "Initial_Peer")
             dht.add_peer(b_node)
-            await state.add_peer(b_id, "Host", b_ip, int(b_port))
+            await state.add_peer(b_id, "Initial_Peer", b_ip, int(b_port))
             world = await client.sync_with_host(b_node)
             if world: await state.apply_world_state(world, dht)
             await dht.bootstrap(lambda ip, pt: client._get_client(NodeInfo("", ip, pt)), [(b_ip, int(b_port))])

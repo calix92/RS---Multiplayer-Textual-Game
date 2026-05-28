@@ -92,15 +92,28 @@ class GameState:
     async def add_peer(self, player_id: str, name: str, ip: str, port: int, joined_at: float = None):
         async with self._lock:
             if player_id == self.self_player.player_id: return False
-            if player_id not in self.peers:
+            
+            is_new = player_id not in self.peers
+            if is_new:
                 self.peers[player_id] = Player(player_id, name, ip, port, joined_at=joined_at or time.time())
                 self._log("system", "JOIN", name, f"{name} entered the realm")
                 return True
+            
             p = self.peers[player_id]
-            if p.name in ["Nó_Inicial", "Desconhecido"]:
+            # Update name if it was a placeholder
+            if p.name in ["Nó_Inicial", "Desconhecido", "Host", "Peer"] and name not in ["Host", "Peer"]:
                 p.name = name
+            
             if joined_at: p.joined_at = joined_at
             p.touch()
+            
+            # If the player was dead or inactive, a JOIN event is still useful
+            if not p.is_alive():
+                p.status = PlayerStatus.ALIVE
+                p.hp = MAX_HP
+                self._log("system", "REJOIN", name, f"{name} returned to the realm")
+                return True
+                
             return False
 
     async def remove_peer(self, player_id: str):
