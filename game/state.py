@@ -32,6 +32,7 @@ class Player:
     status: PlayerStatus = PlayerStatus.ALIVE
     position: str = "Town Square"
     last_seen: float = field(default_factory=time.time)
+    joined_at: float = field(default_factory=time.time)
 
     def is_alive(self) -> bool:
         return self.status == PlayerStatus.ALIVE
@@ -76,6 +77,10 @@ class GameState:
         self.peers: dict[str, Player] = {}
         self.event_log: list[GameEvent] = []
 
+    def log_external_event(self, msg: str):
+        """Logs an event that was generated externally (e.g., from main.py)."""
+        self._log("system", "EVENT", "all", msg)
+
     def _log(self, actor: str, action: str, target: str, result: str):
         self.event_log.append(GameEvent(time.time(), actor, action, target, result))
         if len(self.event_log) > 200: self.event_log.pop(0)
@@ -84,16 +89,18 @@ class GameState:
     def _get_player(self, player_id: str) -> Optional[Player]:
         return self.self_player if player_id == self.self_player.player_id else self.peers.get(player_id)
 
-    async def add_peer(self, player_id: str, name: str, ip: str, port: int):
+    async def add_peer(self, player_id: str, name: str, ip: str, port: int, joined_at: float = None):
         async with self._lock:
             if player_id == self.self_player.player_id: return False
             if player_id not in self.peers:
-                self.peers[player_id] = Player(player_id, name, ip, port)
+                self.peers[player_id] = Player(player_id, name, ip, port, joined_at=joined_at or time.time())
                 self._log("system", "JOIN", name, f"{name} entered the realm")
                 return True
-            if self.peers[player_id].name in ["Nó_Inicial", "Desconhecido"]:
-                self.peers[player_id].name = name
-            self.peers[player_id].touch()
+            p = self.peers[player_id]
+            if p.name in ["Nó_Inicial", "Desconhecido"]:
+                p.name = name
+            if joined_at: p.joined_at = joined_at
+            p.touch()
             return False
 
     async def remove_peer(self, player_id: str):
@@ -137,8 +144,8 @@ class GameState:
             self._log(sname, "MOVE", dest, res)
             return res
 
-    async def process_join(self, sid: str, sname: str, ip: str, port: int) -> str:
-        return f"{sname} joined!" if await self.add_peer(sid, sname, ip, port) else ""
+    async def process_join(self, sid: str, sname: str, ip: str, port: int, joined_at: float = None) -> str:
+        return f"{sname} joined!" if await self.add_peer(sid, sname, ip, port, joined_at) else ""
 
     async def process_leave(self, sid: str, sname: str) -> str:
         await self.remove_peer(sid)
@@ -149,8 +156,10 @@ class GameState:
             p = self.peers.get(sid)
             if not p: return ""
             try:
-                hp, status, pos = payload.split(":")
+                parts = payload.split(":")
+                hp, status, pos = parts[0], parts[1], parts[2]
                 p.hp, p.status, p.position = int(hp), PlayerStatus(status), pos
+                if len(parts) > 3: p.joined_at = float(parts[3])
                 p.touch()
             except: pass
             return ""
@@ -192,7 +201,8 @@ class GameState:
 
     def _player_to_dict(self, p: Player):
         return {"player_id": p.player_id, "name": p.name, "ip": p.ip, "port": p.port,
-                "hp": p.hp, "status": p.status.value, "position": p.position}
+                "hp": p.hp, "status": p.status.value, "position": p.position,
+                "joined_at": p.joined_at}
 
     async def apply_world_state(self, json_data: str, dht=None):
         data = json.loads(json_data)
@@ -200,7 +210,9 @@ class GameState:
             for d in data:
                 pid = d["player_id"]
                 if pid == self.self_player.player_id: continue
-                self.peers[pid] = Player(pid, d["name"], d["ip"], d["port"], d["hp"], PlayerStatus(d["status"]), d["position"])
+                self.peers[pid] = Player(pid, d["name"], d["ip"], d["port"], d["hp"], 
+                                         PlayerStatus(d["status"]), d["position"], 
+                                         joined_at=d.get("joined_at", time.time()))
                 if dht:
                     from dht.kademlia import NodeInfo
                     dht.add_peer(NodeInfo(pid, d["ip"], d["port"], d["name"]))
@@ -230,7 +242,14 @@ class GameState:
         return "\n".join(lines)
 
     def recent_events(self, n: int = 8) -> list[str]:
-        return [f"  {e.actor} → {e.action}({e.target}): {e.result}" for e in self.event_log[-n:]]
+        output = []
+        for e in self.event_log[-n:]:
+            tm = time.strftime("%H:%M:%S", time.localtime(e.timestamp))
+            if e.action == "EVENT":
+                output.append(f"  [{tm}] {e.result}")
+            else:
+                output.append(f"  [{tm}] {e.actor} {e.action}({e.target}): {e.result}")
+        return output
 
     def get_room_occupants(self) -> dict[str, list[str]]:
         rooms = {pos: [] for pos in POSITIONS}
@@ -240,6 +259,13 @@ class GameState:
         return rooms
 
     def get_leader_id(self) -> str:
-        """O líder é o nó ativo com o menor ID (o mais 'estável')."""
+        """O líder é o nó ativo mais antigo (seniority) ou com menor ID em caso de empate."""
         candidates = [self.self_player.player_id] + list(self.peers.keys())
-        return min(candidates) if candidates else self.self_player.player_id
+        if not candidates: return self.self_player.player_id
+        
+        def sort_key(pid):
+            p = self._get_player(pid)
+            # Priorizamos o tempo de entrada (menor timestamp = mais antigo)
+            return (p.joined_at if p else float('inf'), pid)
+            
+        return min(candidates, key=sort_key)

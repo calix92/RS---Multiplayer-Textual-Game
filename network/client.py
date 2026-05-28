@@ -74,8 +74,8 @@ class BroadcastClient:
     async def announce_join(self, sid, sname, ip, port):
         await self.broadcast(sid, sname, 4, f"{ip}:{port}")
 
-    async def announce_status(self, sid, sname, hp, status, pos):
-        await self.broadcast(sid, sname, 6, f"{hp}:{status}:{pos}")
+    async def announce_status(self, sid, sname, hp, status, pos, joined_at):
+        await self.broadcast(sid, sname, 6, f"{hp}:{status}:{pos}:{joined_at}")
 
     async def announce_leave(self, sid, sname):
         await self.broadcast(sid, sname, 5, "")

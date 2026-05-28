@@ -38,7 +38,7 @@ async def maintenance_loop(player_id, name, ip, port, state, dht, client):
         while True:
             await asyncio.sleep(5)
             p = state.self_player
-            await client.announce_status(player_id, name, p.hp, p.status.value, p.position)
+            await client.announce_status(player_id, name, p.hp, p.status.value, p.position, p.joined_at)
             await client.announce_join(player_id, name, ip, port)
             for peer in dht.all_peers():
                 if peer.node_id != player_id:
