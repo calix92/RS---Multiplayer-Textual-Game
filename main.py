@@ -6,6 +6,10 @@ import sys
 import os
 from game.state import GameState
 from dht.kademlia import DHTNode, NodeInfo, node_id_from
+try:
+    from proto import game_pb2
+except ImportError:
+    game_pb2 = None
 from network.server import start_server
 from network.client import BroadcastClient, PeerClient
 from utils.terminal import Terminal
@@ -39,7 +43,6 @@ async def maintenance_loop(player_id, name, ip, port, state, dht, client):
             await asyncio.sleep(5)
             p = state.self_player
             await client.announce_status(player_id, name, p.hp, p.status.value, p.position, p.joined_at)
-            await client.announce_join(player_id, name, ip, port)
             for peer in dht.all_peers():
                 if peer.node_id != player_id:
                     try: await client._get_client(peer).ping(player_id)
@@ -75,11 +78,11 @@ async def main():
                 terminal.push_event(f"{target.name}: {'✅ OK' if ok else '❌ FAIL'}")
         elif cmd == "say":
             terminal.push_event(f"[{args.name}] {args_str}")
-            await client.broadcast(player_id, args.name, 2, args_str)
+            await client.broadcast(player_id, args.name, game_pb2.SPEAK, args_str)
         elif cmd == "move":
             ok, msg = await state.self_move(args_str)
             terminal.push_event(msg)
-            if ok: await client.broadcast(player_id, args.name, 1, args_str)
+            if ok: await client.broadcast(player_id, args.name, game_pb2.MOVE, args_str)
         elif cmd == "attack":
             target = next((p for p in state.peers.values() if p.name.lower() == args_str.split()[0].lower()), None) if args_str else None
             weapon = args_str.split()[1] if args_str and len(args_str.split()) > 1 else "sword"
@@ -87,8 +90,8 @@ async def main():
                 ok, err = await state.self_attack(target.player_id, weapon)
                 if ok:
                     terminal.push_event(f"Attacked {target.name} with {weapon}!")
-                    await client.broadcast(player_id, args.name, 2, f"Attacked {target.name} with {weapon}!")
-                    await client.send_to(NodeInfo(target.player_id, target.ip, target.port, target.name), player_id, args.name, 0, weapon)
+                    await client.broadcast(player_id, args.name, game_pb2.SPEAK, f"Attacked {target.name} with {weapon}!")
+                    await client.send_to(NodeInfo(target.player_id, target.ip, target.port, target.name), player_id, args.name, game_pb2.ATTACK, weapon)
                 else: terminal.push_event(f"Error: {err}")
             else: terminal.push_event("Target not found.")
         elif cmd == "heal":
@@ -96,9 +99,9 @@ async def main():
             if target:
                 ok, err = await state.self_heal(target.player_id)
                 if ok:
-                    await client.send_to(NodeInfo(target.player_id, target.ip, target.port, target.name), player_id, args.name, 3, "15")
+                    await client.send_to(NodeInfo(target.player_id, target.ip, target.port, target.name), player_id, args.name, game_pb2.HEAL, "15")
                     terminal.push_event(f"Healed {target.name}!")
-                    await client.broadcast(player_id, args.name, 2, f"Healed {target.name}!")
+                    await client.broadcast(player_id, args.name, game_pb2.SPEAK, f"Healed {target.name}!")
                 else: terminal.push_event(f"Error: {err}")
         elif cmd == "respawn":
             ok, msg = await state.self_respawn()

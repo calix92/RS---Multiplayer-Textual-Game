@@ -45,19 +45,19 @@ class GameServicer(game_pb2_grpc.GameServiceServicer):
         at, sid, sname, pay = request.action, request.sender_id, request.sender_name, request.payload
         hp, msg = 0, ""
         try:
-            if at == 0: hp, msg = await self.state.process_attack(sid, sname, pay)
-            elif at == 1: msg = await self.state.process_move(sid, sname, pay)
-            elif at == 2: msg = await self.state.process_speak(sname, pay)
-            elif at == 3: hp, msg = await self.state.process_heal(sid, sname, int(pay) if pay.isdigit() else 15)
-            elif at == 4:
+            if at == game_pb2.ATTACK: hp, msg = await self.state.process_attack(sid, sname, pay)
+            elif at == game_pb2.MOVE: msg = await self.state.process_move(sid, sname, pay)
+            elif at == game_pb2.SPEAK: msg = await self.state.process_speak(sname, pay)
+            elif at == game_pb2.HEAL: hp, msg = await self.state.process_heal(sid, sname, int(pay) if pay.isdigit() else 15)
+            elif at == game_pb2.JOIN:
                 ip, port = pay.split(":") if ":" in pay else (sid, 0)
                 in_ip = extract_ip(context)
                 if in_ip and not in_ip.startswith("127.") and (ip.startswith("127.") or ip.startswith("172.")):
                     ip = in_ip
                 msg = await self.state.process_join(sid, sname, ip, int(port), joined_at=request.timestamp/1000.0)
                 self.dht.add_peer(NodeInfo(sid, ip, int(port), sname))
-            elif at == 5: msg = await self.state.process_leave(sid, sname)
-            elif at == 6: msg = await self.state.process_status(sid, sname, pay)
+            elif at == game_pb2.LEAVE: msg = await self.state.process_leave(sid, sname)
+            elif at == game_pb2.STATUS: msg = await self.state.process_status(sid, sname, pay)
         except Exception as e: msg = f"Error: {e}"
         if msg: self.on_event(msg)
         return game_pb2.ActionResponse(success=True, message=msg, hp_delta=hp)

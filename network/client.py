@@ -72,13 +72,13 @@ class BroadcastClient:
         return await self._get_client(target).send_action(sid, sname, atype, pay)
 
     async def announce_join(self, sid, sname, ip, port):
-        await self.broadcast(sid, sname, 4, f"{ip}:{port}")
+        await self.broadcast(sid, sname, game_pb2.JOIN, f"{ip}:{port}")
 
     async def announce_status(self, sid, sname, hp, status, pos, joined_at):
-        await self.broadcast(sid, sname, 6, f"{hp}:{status}:{pos}:{joined_at}")
+        await self.broadcast(sid, sname, game_pb2.STATUS, f"{hp}:{status}:{pos}:{joined_at}")
 
     async def announce_leave(self, sid, sname):
-        await self.broadcast(sid, sname, 5, "")
+        await self.broadcast(sid, sname, game_pb2.LEAVE, "")
 
     async def close_all(self):
         for c in self._clients.values(): await c.close()

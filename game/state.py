@@ -159,7 +159,14 @@ class GameState:
                 parts = payload.split(":")
                 hp, status, pos = parts[0], parts[1], parts[2]
                 p.hp, p.status, p.position = int(hp), PlayerStatus(status), pos
-                if len(parts) > 3: p.joined_at = float(parts[3])
+                if len(parts) > 3:
+                    try:
+                        new_joined = float(parts[3])
+                        # Only update if the received joined_at is older than what we have, 
+                        # or if our current joined_at was just a placeholder (very recent).
+                        if new_joined < p.joined_at or (time.time() - p.joined_at < 10):
+                            p.joined_at = new_joined
+                    except ValueError: pass
                 p.touch()
             except: pass
             return ""

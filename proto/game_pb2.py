@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x10proto/game.proto\x12\x04game\" \n\x0bSyncRequest\x12\x11\n\treader_id\x18\x01 \x01(\t\"%\n\nWorldState\x12\x17\n\x0fworld_data_json\x18\x01 \x01(\t\"}\n\rActionRequest\x12\x11\n\tsender_id\x18\x01 \x01(\t\x12\x13\n\x0bsender_name\x18\x02 \x01(\t\x12 \n\x06\x61\x63tion\x18\x03 \x01(\x0e\x32\x10.game.ActionType\x12\x0f\n\x07payload\x18\x04 \x01(\t\x12\x11\n\ttimestamp\x18\x05 \x01(\x03\"D\n\x0e\x41\x63tionResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x10\n\x08hp_delta\x18\x03 \x01(\x05\"C\n\x08NodeInfo\x12\x0f\n\x07node_id\x18\x01 \x01(\t\x12\n\n\x02ip\x18\x02 \x01(\t\x12\x0c\n\x04port\x18\x03 \x01(\x05\x12\x0c\n\x04name\x18\x04 \x01(\t\":\n\x0f\x46indNodeRequest\x12\x11\n\ttarget_id\x18\x01 \x01(\t\x12\x14\n\x0crequester_id\x18\x02 \x01(\t\"9\n\x10\x46indNodeResponse\x12%\n\rclosest_nodes\x18\x01 \x03(\x0b\x32\x0e.game.NodeInfo\"0\n\x10StoreNodeRequest\x12\x1c\n\x04node\x18\x01 \x01(\x0b\x32\x0e.game.NodeInfo\"$\n\x11StoreNodeResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\" \n\x0bPingRequest\x12\x11\n\tsender_id\x18\x01 \x01(\t\".\n\x0cPingResponse\x12\x0f\n\x07node_id\x18\x01 \x01(\t\x12\r\n\x05\x61live\x18\x02 \x01(\x08*L\n\nActionType\x12\n\n\x06\x41TTACK\x10\x00\x12\x08\n\x04MOVE\x10\x01\x12\t\n\x05SPEAK\x10\x02\x12\x08\n\x04HEAL\x10\x03\x12\x08\n\x04JOIN\x10\x04\x12\t\n\x05LEAVE\x10\x05\x32\xa0\x02\n\x0bGameService\x12\x37\n\nSendAction\x12\x13.game.ActionRequest\x1a\x14.game.ActionResponse\x12\x39\n\x08\x46indNode\x12\x15.game.FindNodeRequest\x1a\x16.game.FindNodeResponse\x12<\n\tStoreNode\x12\x16.game.StoreNodeRequest\x1a\x17.game.StoreNodeResponse\x12-\n\x04Ping\x12\x11.game.PingRequest\x1a\x12.game.PingResponse\x12\x30\n\tSyncWorld\x12\x11.game.SyncRequest\x1a\x10.game.WorldStateb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x10proto/game.proto\x12\x04game\" \n\x0bSyncRequest\x12\x11\n\treader_id\x18\x01 \x01(\t\"%\n\nWorldState\x12\x17\n\x0fworld_data_json\x18\x01 \x01(\t\"}\n\rActionRequest\x12\x11\n\tsender_id\x18\x01 \x01(\t\x12\x13\n\x0bsender_name\x18\x02 \x01(\t\x12 \n\x06\x61\x63tion\x18\x03 \x01(\x0e\x32\x10.game.ActionType\x12\x0f\n\x07payload\x18\x04 \x01(\t\x12\x11\n\ttimestamp\x18\x05 \x01(\x03\"D\n\x0e\x41\x63tionResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x10\n\x08hp_delta\x18\x03 \x01(\x05\"C\n\x08NodeInfo\x12\x0f\n\x07node_id\x18\x01 \x01(\t\x12\n\n\x02ip\x18\x02 \x01(\t\x12\x0c\n\x04port\x18\x03 \x01(\x05\x12\x0c\n\x04name\x18\x04 \x01(\t\":\n\x0f\x46indNodeRequest\x12\x11\n\ttarget_id\x18\x01 \x01(\t\x12\x14\n\x0crequester_id\x18\x02 \x01(\t\"9\n\x10\x46indNodeResponse\x12%\n\rclosest_nodes\x18\x01 \x03(\x0b\x32\x0e.game.NodeInfo\"0\n\x10StoreNodeRequest\x12\x1c\n\x04node\x18\x01 \x01(\x0b\x32\x0e.game.NodeInfo\"$\n\x11StoreNodeResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\" \n\x0bPingRequest\x12\x11\n\tsender_id\x18\x01 \x01(\t\".\n\x0cPingResponse\x12\x0f\n\x07node_id\x18\x01 \x01(\t\x12\r\n\x05\x61live\x18\x02 \x01(\x08*X\n\nActionType\x12\n\n\x06\x41TTACK\x10\x00\x12\x08\n\x04MOVE\x10\x01\x12\t\n\x05SPEAK\x10\x02\x12\x08\n\x04HEAL\x10\x03\x12\x08\n\x04JOIN\x10\x04\x12\t\n\x05LEAVE\x10\x05\x12\n\n\x06STATUS\x10\x06\x32\xa0\x02\n\x0bGameService\x12\x37\n\nSendAction\x12\x13.game.ActionRequest\x1a\x14.game.ActionResponse\x12\x39\n\x08\x46indNode\x12\x15.game.FindNodeRequest\x1a\x16.game.FindNodeResponse\x12<\n\tStoreNode\x12\x16.game.StoreNodeRequest\x1a\x17.game.StoreNodeResponse\x12-\n\x04Ping\x12\x11.game.PingRequest\x1a\x12.game.PingResponse\x12\x30\n\tSyncWorld\x12\x11.game.SyncRequest\x1a\x10.game.WorldStateb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -32,7 +32,7 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'proto.game_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
   _globals['_ACTIONTYPE']._serialized_start=654
-  _globals['_ACTIONTYPE']._serialized_end=730
+  _globals['_ACTIONTYPE']._serialized_end=742
   _globals['_SYNCREQUEST']._serialized_start=26
   _globals['_SYNCREQUEST']._serialized_end=58
   _globals['_WORLDSTATE']._serialized_start=60
@@ -55,6 +55,6 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_PINGREQUEST']._serialized_end=604
   _globals['_PINGRESPONSE']._serialized_start=606
   _globals['_PINGRESPONSE']._serialized_end=652
-  _globals['_GAMESERVICE']._serialized_start=733
-  _globals['_GAMESERVICE']._serialized_end=1021
+  _globals['_GAMESERVICE']._serialized_start=745
+  _globals['_GAMESERVICE']._serialized_end=1033
 # @@protoc_insertion_point(module_scope)

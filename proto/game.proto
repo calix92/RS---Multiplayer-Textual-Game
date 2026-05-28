@@ -25,6 +25,7 @@ enum ActionType {
   HEAL    = 3;
   JOIN    = 4;
   LEAVE   = 5;
+  STATUS  = 6;
 }
 
 message SyncRequest {
