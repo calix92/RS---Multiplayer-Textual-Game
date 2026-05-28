@@ -23,22 +23,30 @@ class GameServicer(game_pb2_grpc.GameServiceServicer):
     async def _force_peer(self, sid, sname, context=None):
         if sid == self.state.self_player.player_id: return
         in_ip = extract_ip(context)
+        
+        # Ensure name is not a placeholder for comparison
+        is_real_name = sname and sname not in ["Peer", "Host", "Initial_Peer", "Desconhecido"]
+
         if sid in self.state.peers:
             p = self.state.peers[sid]
             p.touch()
-            # Update name if placeholder
-            if sname and sname not in ["Peer", "Host"] and p.name in ["Peer", "Host", "Desconhecido"]:
+            if is_real_name and (p.name in ["Peer", "Host", "Initial_Peer", "Desconhecido"] or not p.name):
                 p.name = sname
             
-            if in_ip and not in_ip.startswith("127.") and (p.ip.startswith("127.") or p.ip != in_ip):
+            if in_ip and not in_ip.startswith("127.") and (p.ip.startswith("127.") or p.ip.startswith("172.31.")):
                 p.ip = in_ip
-                node = next((n for n in self.dht.all_peers() if n.node_id == sid), None)
-                if node: node.ip = in_ip
         else:
+            # Not in state? Add it now using the info from the request
+            # This handles cases where DHT might be out of sync
+            node_name = sname if is_real_name else "Peer"
+            peer_ip = in_ip if in_ip else "0.0.0.0"
+            # Try to find more info in DHT if possible
             node = next((n for n in self.dht.all_peers() if n.node_id == sid), None)
             if node:
-                if in_ip and not in_ip.startswith("127."): node.ip = in_ip
-                await self.state.add_peer(node.node_id, node.name, node.ip, node.port)
+                peer_ip = node.ip if not in_ip or in_ip.startswith("127.") else in_ip
+                if not is_real_name: node_name = node.name
+            
+            await self.state.add_peer(sid, node_name, peer_ip, 50051) # Default port if unknown
 
     async def SyncWorld(self, request, context):
         await self._force_peer(request.reader_id, "Peer", context)
