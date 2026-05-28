@@ -54,7 +54,7 @@ class GameServicer(game_pb2_grpc.GameServiceServicer):
                 in_ip = extract_ip(context)
                 if in_ip and not in_ip.startswith("127.") and (ip.startswith("127.") or ip.startswith("172.")):
                     ip = in_ip
-                msg = await self.state.process_join(sid, sname, ip, int(port))
+                msg = await self.state.process_join(sid, sname, ip, int(port), joined_at=request.timestamp/1000.0)
                 self.dht.add_peer(NodeInfo(sid, ip, int(port), sname))
             elif at == 5: msg = await self.state.process_leave(sid, sname)
             elif at == 6: msg = await self.state.process_status(sid, sname, pay)

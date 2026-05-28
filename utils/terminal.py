@@ -9,10 +9,21 @@ BANNER = """\033[95m
   ██║     ██║  ██║██║         ██║  ██║██║     ╚██████╔╝ 
   ╚═╝     ╚═╝  ╚═╝╚═╝         ╚═╝  ╚═╝╚═╝      ╚═════╝  \033[0m"""
 
-HELP_TEXT = """\033[1mMENU DE COMANDOS:\033[0m
-- \033[96msay\033[0m <msg>, \033[96mmove\033[0m <local>, \033[96mlook\033[0m
-- \033[91mattack\033[0m <nome> [arma], \033[92mheal\033[0m <nome>
-- \033[93mstatus\033[0m, \033[93mlog\033[0m, \033[94mpeers\033[0m, \033[95mrespawn\033[0m, \033[1mquit\033[0m"""
+HELP_TEXT = """
+\033[1m╔════════════════════════════════════════════════════════════════╗\033[0m
+\033[1m║\033[0m                     \033[1;95m📜  MENU DE COMANDOS 📜\033[0m                   \033[1m║\033[0m
+\033[1m╠════════════════════════════════════════════════════════════════╣\033[0m
+\033[1m║\033[0m  \033[96msay\033[0m <msg>            : Fala com todos no reino            \033[1m║\033[0m
+\033[1m║\033[0m  \033[96mmove\033[0m <local>         : Move-te para uma nova área         \033[1m║\033[0m
+\033[1m║\033[0m  \033[96mlook\033[0m                 : Vê quem está em cada área          \033[1m║\033[0m
+\033[1m║\033[0m  \033[91mattack\033[0m <nome> [arma] : Ataca um jogador (ex: sword, axe)  \033[1m║\033[0m
+\033[1m║\033[0m  \033[92mheal\033[0m <nome>           : Cura um companheiro                \033[1m║\033[0m
+\033[1m║\033[0m  \033[93mstatus\033[0m               : Mostra o placar e a tua vida       \033[1m║\033[0m
+\033[1m║\033[0m  \033[93mlog\033[0m                  : Vê os últimos acontecimentos       \033[1m║\033[0m
+\033[1m║\033[0m  \033[94mpeers\033[0m                : Lista jogadores ligados            \033[1m║\033[0m
+\033[1m║\033[0m  \033[95mrespawn\033[0m              : Volta à vida (se morreste)         \033[1m║\033[0m
+\033[1m║\033[0m  \033[1mquit\033[0m                 : Sair do jogo                       \033[1m║\033[0m
+\033[1m╚════════════════════════════════════════════════════════════════╝\033[0m"""
 
 DEATH_SCREEN = """\033[91m
       NOOOO! TU MORRESTE!
@@ -21,12 +32,12 @@ DEATH_SCREEN = """\033[91m
        /            \\
       |              |
       |,  .-.  .-.  ,|
-      | )(__/  \__)( |
-      |/     /\     \|
+      | )(__/  \\__)( |
+      |/     /\\     \\|
       (_     ^^     _)
-       \__|IIIIII|__/
-        | \IIIIII/ |
-        \          /
+       \\__|IIIIII|__/
+        | \\IIIIII/ |
+        \\          /
          `--------`
     Digita 'respawn' para voltar!\033[0m"""
 
@@ -42,7 +53,9 @@ class Terminal:
         self.state, self.handler = state, handler
         self._queue, self._running = asyncio.Queue(), True
 
-    def push_event(self, msg): self._queue.put_nowait(msg)
+    def push_event(self, msg): 
+        self.state.log_external_event(msg)
+        self._queue.put_nowait(msg)
 
     async def run_loop(self):
         os.system('clear' if os.name == 'posix' else 'cls')
